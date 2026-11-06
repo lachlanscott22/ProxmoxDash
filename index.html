@@ -187,6 +187,17 @@ main { max-width: 1320px; margin: 0 auto; padding: 8px 24px 64px; }
 .lrow .bar { grid-column: 1 / -1; margin-top: -2px; }
 .group-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); font-weight: 600; margin: 14px 0 2px; }
 .group-label:first-child { margin-top: 0; }
+.sens-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 6px 26px; align-items: start; }
+.sens-col > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; margin: 0 0 2px; padding: 4px 0; border-radius: 6px; }
+.sens-col > summary::-webkit-details-marker { display: none; }
+.sens-col > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sens-col > summary .gl { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); font-weight: 600; }
+.sens-col > summary .sum { margin-left: auto; font-size: .78rem; color: var(--text-2); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.sens-col > summary::after { content: ""; flex: none; width: 6px; height: 6px; border-right: 1.6px solid var(--text-3); border-bottom: 1.6px solid var(--text-3); transform: rotate(-45deg); transition: transform .25s var(--spring); }
+.sens-col[open] > summary .sum { display: none; }
+.sens-col[open] > summary::after { transform: rotate(45deg); }
+.sens-col .lrow { padding: 6px 0; }
+@media (prefers-reduced-motion: reduce) { .sens-col > summary::after { transition: none; } }
 .temp-v { display: inline-flex; align-items: center; gap: 8px; }
 .io { display: inline-flex; gap: 12px; }
 .io i { font-style: normal; display: inline-flex; align-items: center; gap: 4px; }
@@ -453,20 +464,20 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 32px; color: var(--t
       <div class="spark-cap"><span id="capTemp">10 min</span><span>now</span></div>
     </section>
 
-    <section class="card span-6" aria-labelledby="h-cores">
-      <div class="card-head"><h3 id="h-cores">Per-thread load</h3><span class="chip" id="coresChip"></span></div>
-      <div id="cores"></div>
-    </section>
-    <section class="card span-6" aria-labelledby="h-sens">
+    <section class="card span-12" aria-labelledby="h-sens">
       <div class="card-head"><h3 id="h-sens">Sensors</h3><span class="chip" id="sensChip"></span></div>
       <div id="sensors"></div>
     </section>
 
-    <section class="card span-6" aria-labelledby="h-net">
+    <section class="card span-4" aria-labelledby="h-cores">
+      <div class="card-head"><h3 id="h-cores">Per-thread load</h3><span class="chip" id="coresChip"></span></div>
+      <div id="cores"></div>
+    </section>
+    <section class="card span-4" aria-labelledby="h-net">
       <div class="card-head"><h3 id="h-net">Network</h3><span class="io"><i>Receive</i><i class="o">Send</i></span></div>
       <div id="nics"></div>
     </section>
-    <section class="card span-6" aria-labelledby="h-disk">
+    <section class="card span-4" aria-labelledby="h-disk">
       <div class="card-head"><h3 id="h-disk">Disks</h3><span class="io"><i>Read</i><i class="o">Write</i></span></div>
       <div id="disks"></div>
     </section>
@@ -746,6 +757,7 @@ let S = null, lastOk = 0, sel = store.get("node", null);
 let metric = store.get("metric", "cpu"), scope = store.get("scope", "node"), show = store.get("show", "running");
 let sortKey = store.get("sortKey", "cpu"), sortDir = store.get("sortDir", -1), query = "";
 
+const sensClosed = new Set(store.get("sensClosed", matchMedia("(max-width: 760px)").matches ? ["nvme", "drive", "gpu", "nic", "board", "fans"] : []));
 const rings = { cpu: Ring($("ringCpu"), "CPU"), mem: Ring($("ringMem"), "used"), temp: Ring($("ringTemp"), "CPU") };
 const sparks = {
   cpu: Spark($("sparkCpu"), { domain: [0, 1], fmt: v => pct(v, 1) }),
@@ -904,19 +916,23 @@ function renderNode() {
   else {
     const groups = [["cpu", "Processor"], ["nvme", "NVMe"], ["drive", "Drives"], ["gpu", "Graphics"], ["nic", "Network"], ["board", "Board"]];
     let html = "";
+    const col = (k, label, rows, sum) => `<details class="sens-col" data-k="${k}" ${sensClosed.has(k) ? "" : "open"}><summary><span class="gl">${label}</span><span class="sum">${sum}</span></summary><div class="list">${rows}</div></details>`;
     for (const [k, label] of groups) {
       let list = n.temps.filter(t => t.kind === k);
       if (!list.length) continue;
       // collapse many "Core N" readings into the hottest few
       if (k === "cpu" && list.length > 6) { const head = list.filter(t => !/^Core \d+/.test(t.label)); const cores = list.filter(t => /^Core \d+/.test(t.label)).sort((a, b) => b.value - a.value); list = [...head, ...cores.slice(0, 4)]; }
-      html += `<div class="group-label">${label}</div><div class="list">` + list.map(t => {
+      const rows = list.map(t => {
         const s = tempStatus(t.value, t.kind, t.crit);
         return `<div class="lrow"><div class="nm"><b>${esc(sensorName(t))}</b>${t.model ? `<small>${esc(t.model)}</small>` : ""}</div>
           <span class="v temp-v">${temp(t.value)} ${statusHTML(s)}</span></div>`;
-      }).join("") + `</div>`;
+      }).join("");
+      const hot = list.reduce((m, t) => t.value > m.value ? t : m, list[0]);
+      html += col(k, label, rows, `${list.length > 1 ? list.length + " · " : ""}${temp(hot.value)} ${statusHTML(tempStatus(hot.value, hot.kind, hot.crit))}`);
     }
-    if (n.fans.length) html += `<div class="group-label">Fans</div><div class="list">` + n.fans.map(f => `<div class="lrow"><div class="nm"><b>${esc(f.label)}</b><small>${esc(f.chip)}</small></div><span class="v">${f.rpm ? f.rpm + " RPM" : "Stopped"}</span></div>`).join("") + `</div>`;
-    sh.innerHTML = html;
+    if (n.fans.length) html += col("fans", "Fans", n.fans.map(f => `<div class="lrow"><div class="nm"><b>${esc(f.label)}</b><small>${esc(f.chip)}</small></div><span class="v">${f.rpm ? f.rpm + " RPM" : "Stopped"}</span></div>`).join(""), `${n.fans.length} fan${n.fans.length > 1 ? "s" : ""}`);
+    sh.innerHTML = `<div class="sens-grid">${html}</div>`;
+    if (!sh._wired) { sh._wired = true; sh.addEventListener("toggle", e => { const d = e.target; if (!d.dataset || !d.dataset.k) return; d.open ? sensClosed.delete(d.dataset.k) : sensClosed.add(d.dataset.k); store.set("sensClosed", [...sensClosed]); }, true); }
     $("sensChip").textContent = `${n.temps.length} reading${n.temps.length === 1 ? "" : "s"}`;
   }
 

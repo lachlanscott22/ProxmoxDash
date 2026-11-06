@@ -31,7 +31,7 @@ from urllib import error as urlerr
 from urllib import parse as urlparse
 from urllib import request as urlreq
 
-VERSION = "1.0.5"
+VERSION = "1.0.6"
 
 
 def _env(name, default, cast=str):
