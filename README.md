@@ -1,4 +1,4 @@
-> Yes, this is AI-made. I needed a dashboard and I don't care. Use it or don't. 🙂
+> Yes, this is AI-made. I needed a dashboard, Use it or don't, I don't care. 🙂
 
 # Proxmox Dashboard (`pve-dash`)
 
