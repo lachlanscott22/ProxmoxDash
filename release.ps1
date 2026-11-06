@@ -109,7 +109,7 @@ if (Test-Path .pushguard.local) {
     $pat = (Get-Content .pushguard.local | Where-Object { $_ -and -not $_.StartsWith("#") }) -join "|"
     if ($pat) {
         # the repo address in the REPO default line is public by nature, so it is allowed
-        $hits = & git grep --cached -I -i -n -E $pat 2>$null | Where-Object { $_ -notmatch "PVE_DASH_REPO" }
+        $hits = & git grep --cached -I -i -n -E $pat 2>$null | Where-Object { ($_ -replace [regex]::Escape($slug), "") -match $pat }
         if ($hits) {
             & git reset -q
             & git checkout -- VERSION pve-dash.py 2>$null   # undo the version bump so a re-run doesn't bump twice

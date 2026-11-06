@@ -1,65 +1,65 @@
 > Yes, this is AI-made. I needed a dashboard, Use it or don't, I don't care. 🙂
 
-# Proxmox Dashboard (`pve-dash`)
+# Proxmox Dashboard
 
-A live dashboard for Proxmox VE that runs on the Proxmox host itself. One Python 3 file (standard library only) plus `index.html`. It reads CPU, memory, NICs, disks, temperatures and fans straight from the kernel, reads guests and storage from `pvesh`, and can send alerts through Pushover.
+A live dashboard for Proxmox VE that runs on the Proxmox host itself. One Python 3 file (standard library only) plus `index.html`. No API token, no lm-sensors. It reads CPU, memory, NICs, disks, temperatures and fans straight from the kernel, guests and storage from `pvesh`, and can send alerts through Pushover.
 
-## Install
+## Install (one line)
 
-Copy this folder to the node, then as root:
-
-```sh
-./install.sh
-```
-
-This copies the files to `/opt/pve-dash`, tries to load `coretemp`, `k10temp` and `drivetemp` (and persists the ones that work in `/etc/modules-load.d/pve-dash.conf`), asks once for a settings password, and enables the `pve-dash` service. Then open `http://<node-ip>:8765/`.
-
-Change the password later with `./install.sh --set-password`. The password hash lives in `/etc/pve/priv/pve-dash-auth.json`, so it is shared by every node. The read-only dashboard needs no password; only the Settings page does.
-
-For SMART alerts, install `smartmontools` (`apt install smartmontools`). Without it, SMART checks are skipped and Settings says so.
-
-## Every node
-
-Run `install.sh` on **every** node. There is nothing to configure. Each agent serves its own raw readings at `/api/local`, and whichever node you open fetches the others' using the node IPs from `/cluster/status`. Nodes without an agent still show CPU and RAM from the cluster, with a "No live agent" message for temperatures, per-thread load, NICs and disks.
-
-Settings (`/etc/pve/priv/pve-dash.json`) and alert state (`/etc/pve/priv/pve-dash-state.json`) live on pmxcfs, so they replicate to every node. Only one node sends alerts: the online node with the lowest name that is running the agent. If it goes down, the next one takes over without re-sending what is already active.
-
-## Updates
-
-Settings has a **Software** section. When a newer version is on GitHub, a dot appears on the gear icon and the section shows **Update** (this node) and **Update all nodes**. Updating downloads the tagged release, checks it compiles and matches the version, keeps the old files as `*.bak`, and restarts the service. Settings are untouched.
-
-Point it at your repository with `PVE_DASH_REPO=owner/name` (set in `/etc/default/pve-dash`). `release.sh` fills the default in from your git remote the first time you publish, so you normally don't need to. The check runs every 6 hours, or press **Check now**.
-
-## Publishing a new version
-
-**Windows:** run `release.bat` (or `.
-elease.ps1`) from this folder. The first run asks for your GitHub username (commits use `<username>@users.noreply.github.com`, so your real email stays private) and the repository URL, then it tests, commits, tags and pushes. Later runs: `release.bat minor "What changed"`. Put regexes (your name, email) in `.pushguard.local`, which is never committed, and it will refuse to push if any match.
-
-**Linux/macOS/Git Bash:**
+On each Proxmox node, as root:
 
 ```sh
-git remote add origin https://github.com/<owner>/<repo>.git   # once
-./release.sh                       # patch bump: runs tests, commits, tags vX.Y.Z, pushes
-./release.sh minor "What changed"  # or: major, or an exact version like 2.3.0
-./release.sh --no-bump "Docs"      # push without offering an update to nodes
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/lachlanscott22/ProxmoxDash/main/install.sh)"
 ```
 
-It refuses to run off `main`, with failing tests, or if `origin/main` has commits you don't have. Nodes find new versions through the `VERSION` file on `main` and download the matching `vX.Y.Z` tag.
+It asks once for a settings password, then starts the service. Open `http://<node-ip>:8765/`.
+
+Run it on **every node**. There's nothing to configure: each node serves its own readings and the others pull them. A node without the agent still shows CPU and RAM, with a "No live agent" note for the rest.
+
+## Install (manual)
+
+On each node, as root:
+
+```sh
+apt install -y python3 curl            # python3 is already there on Proxmox
+mkdir -p /opt/pve-dash && cd /opt/pve-dash
+B=https://raw.githubusercontent.com/lachlanscott22/ProxmoxDash/main
+curl -fsSLO $B/pve-dash.py -O $B/index.html
+curl -fsSL  $B/pve-dash.service -o /etc/systemd/system/pve-dash.service
+chmod +x pve-dash.py
+
+# temperature drivers (use whichever your CPU needs; drivetemp is for SATA drives)
+modprobe coretemp || modprobe k10temp
+modprobe drivetemp
+printf 'coretemp\nk10temp\ndrivetemp\n' > /etc/modules-load.d/pve-dash.conf   # remove lines that don't apply
+
+python3 pve-dash.py --set-password     # password for changing settings; stored in /etc/pve/priv, shared by all nodes
+systemctl daemon-reload
+systemctl enable --now pve-dash
+```
+
+Optional: `apt install smartmontools` enables SMART alerts.
 
 ## Firewall
 
-If the Proxmox firewall is enabled, allow TCP 8765 from your LAN, and **between the nodes** (the agents call each other). In the web UI: Datacenter → Firewall → Add (Direction `in`, Action `ACCEPT`, Protocol `tcp`, Dest. port `8765`), or in `/etc/pve/firewall/cluster.fw`:
+If the Proxmox firewall is on, allow TCP **8765** from your LAN and between the nodes. Datacenter → Firewall → Add (Direction `in`, Action `ACCEPT`, Protocol `tcp`, Dest. port `8765`), or in `/etc/pve/firewall/cluster.fw`:
 
 ```
 [RULES]
 IN ACCEPT -p tcp -dport 8765 -log nolog
 ```
 
-The dashboard is plain HTTP with an open read-only view. Don't expose port 8765 to the internet; put it behind your VPN or a reverse proxy.
+The dashboard is plain HTTP with an open read-only view. Don't expose it to the internet; keep it behind a VPN or reverse proxy.
+
+## Using it
+
+- **Settings** (gear icon): name and logo, Pushover destinations, which alerts fire and where they go, quiet hours. It asks for the password you set at install. Change it any time with `python3 /opt/pve-dash/pve-dash.py --set-password`.
+- **Alerts** are sent by one node only (the online node with the lowest name that runs the agent), so you never get duplicates. If it goes down, the next takes over.
+- **Updates:** when a new version is released, a dot appears on the gear icon and Settings → Software offers **Update** (this node) or **Update all nodes**. Or re-run the install line.
 
 ## Configuration
 
-Environment variables (put them in `/etc/default/pve-dash`, then `systemctl restart pve-dash`):
+Optional environment variables (put them in `/etc/default/pve-dash`, then `systemctl restart pve-dash`):
 
 | Variable | Default | |
 |---|---|---|
@@ -68,26 +68,20 @@ Environment variables (put them in `/etc/default/pve-dash`, then `systemctl rest
 | `PVE_DASH_INTERVAL` | `3` | seconds between samples |
 | `PVE_DASH_HISTORY` | `200` | samples kept per node for charts |
 | `PVE_DASH_URL` | auto | link used in Pushover messages |
-| `PVE_DASH_DEMO` | unset | `1` = fake 3-node cluster, no Proxmox needed |
+| `PVE_DASH_REPO` | this repo | GitHub `owner/name` checked for updates |
 
-Branding (name, logo) and notifications are configured in the dashboard under the gear icon.
-
-## Develop without Proxmox
+## Try it without Proxmox
 
 ```sh
 PVE_DASH_DEMO=1 python3 pve-dash.py     # http://localhost:8765/
 ```
 
-Demo mode stores its settings in `./demo-data` (override with `PVE_DASH_PRIV`) and **logs** Pushover sends instead of calling Pushover. Set `PVE_DASH_DEMO_SEND=1` to send for real.
+Fake 3-node cluster; Pushover sends are logged, not sent (`PVE_DASH_DEMO_SEND=1` to send for real).
 
-Tests (rule engine, with a fake Pushover transport) and screenshots:
+## Uninstall
 
 ```sh
-python -m unittest discover -s tests
-pip install playwright && playwright install chromium
-python tests/screenshots.py              # writes ./screenshots/*.png
+systemctl disable --now pve-dash && rm -rf /opt/pve-dash /etc/systemd/system/pve-dash.service /etc/modules-load.d/pve-dash.conf
 ```
 
-## API
-
-`GET /api/state`, `GET /api/local`, `GET /healthz`, `GET /api/branding` and `GET /logo` are open. `/api/settings` (GET/PUT), `/api/settings/logo` (PUT/DELETE) and `/api/settings/test` (POST) need the password (session cookie, 30 days). Every response is `Cache-Control: no-store`, except `/logo` which is cached for a year because its URL changes with the file.
+Settings stay in `/etc/pve/priv/pve-dash*.json` (shared by the cluster); delete them if you want them gone.

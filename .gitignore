@@ -1,6 +1,12 @@
+# local-only tooling (not part of the dashboard)
+tests/
+release.sh
+release.ps1
+release.bat
+.pushguard.local
+
 __pycache__/
 *.pyc
+*.bak
 screenshots/
 demo-data/
-*.bak
-.pushguard.local
