@@ -28,10 +28,10 @@ if (-not (Test-Path .git)) { & git init -q -b main; if ($LASTEXITCODE -ne 0) { F
 
 # --- identity: keep your real name/email out of the public history
 $email = GOut config --local user.email
-if (-not $email -or $email -notmatch "noreply") {
+if (-not $email -or $email -notmatch "^[A-Za-z0-9-]+@users\.noreply\.github\.com$") {
     Write-Host "Commits are public. Use a private GitHub identity for this repo."
     $gh = Read-Host "Your GitHub username"
-    if (-not $gh) { Fail "A username is required." }
+    if ($gh -notmatch "^[A-Za-z0-9-]+$") { Fail "That should be just your GitHub username (letters, numbers, dashes), not an email address." }
     G config --local user.name $gh
     G config --local user.email "$gh@users.noreply.github.com"
     Write-Host "Using $gh@users.noreply.github.com for this repo only."
@@ -108,9 +108,11 @@ G add -A
 if (Test-Path .pushguard.local) {
     $pat = (Get-Content .pushguard.local | Where-Object { $_ -and -not $_.StartsWith("#") }) -join "|"
     if ($pat) {
-        $hits = & git grep --cached -I -i -n -E $pat 2>$null
+        # the repo address in the REPO default line is public by nature, so it is allowed
+        $hits = & git grep --cached -I -i -n -E $pat 2>$null | Where-Object { $_ -notmatch "PVE_DASH_REPO" }
         if ($hits) {
             & git reset -q
+            & git checkout -- VERSION pve-dash.py 2>$null   # undo the version bump so a re-run doesn't bump twice
             Write-Host ($hits | Select-Object -First 10 | Out-String)
             Fail "Blocked: the lines above match .pushguard.local. Remove them and run again."
         }

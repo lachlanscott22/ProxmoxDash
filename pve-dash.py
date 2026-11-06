@@ -31,7 +31,7 @@ from urllib import error as urlerr
 from urllib import parse as urlparse
 from urllib import request as urlreq
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 
 def _env(name, default, cast=str):
@@ -1749,7 +1749,7 @@ class EngineRunner:
 
 
 # ---------------------------------------------------------------------- updates
-REPO = os.environ.get("PVE_DASH_REPO") or "OWNER/pve-dash"  # release.sh fills this in from your git remote
+REPO = os.environ.get("PVE_DASH_REPO") or "lachlanscott22/ProxmoxDash"  # release.sh fills this in from your git remote
 UPDATE_BASE = os.environ.get("PVE_DASH_UPDATE_BASE") or "https://raw.githubusercontent.com"
 UPDATE_BRANCH = os.environ.get("PVE_DASH_UPDATE_BRANCH") or "main"
 UPDATE_FILES = ("index.html", "pve-dash.py")  # the script goes last so a failure never leaves a half-update
