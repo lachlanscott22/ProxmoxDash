@@ -30,6 +30,10 @@ Point it at your repository with `PVE_DASH_REPO=owner/name` (set in `/etc/defaul
 
 ## Publishing a new version
 
+**Windows:** run `release.bat` (or `.elease.ps1`) from this folder. The first run asks for your GitHub username (commits use `<username>@users.noreply.github.com`, so your real email stays private) and the repository URL, then it tests, commits, tags and pushes. Later runs: `release.bat minor "What changed"`. Put regexes (your name, email) in `.pushguard.local`, which is never committed, and it will refuse to push if any match.
+
+**Linux/macOS/Git Bash:**
+
 ```sh
 git remote add origin https://github.com/<owner>/<repo>.git   # once
 ./release.sh                       # patch bump: runs tests, commits, tags vX.Y.Z, pushes
