@@ -1,0 +1,17 @@
+[Unit]
+Description=Proxmox Dashboard (Proxmox live dashboard)
+After=network-online.target pve-cluster.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/pve-dash
+ExecStart=/usr/bin/python3 /opt/pve-dash/pve-dash.py
+Restart=always
+RestartSec=3
+# Optional overrides: PVE_DASH_PORT, PVE_DASH_BIND, PVE_DASH_INTERVAL, PVE_DASH_HISTORY
+EnvironmentFile=-/etc/default/pve-dash
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,1526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Proxmox Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230071e3'/%3E%3Cpath d='M8 21l5-6 4 4 7-9' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f5f5f7;
+  --card: #ffffff;
+  --card-2: #fbfbfd;
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #86868b;
+  --sep: rgba(0,0,0,.08);
+  --fill: rgba(120,120,128,.12);
+  --fill-2: rgba(120,120,128,.08);
+  --accent: #0071e3;
+  --s1: #2a78d6;           /* series 1 - blue */
+  --s2: #eb6834;           /* series 2 - orange */
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-ink: #067a06; --warning-ink: #8a5a00; --serious-ink: #b2481e; --critical-ink: #b42626;
+  --chrome: rgba(245,245,247,.72);
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+  --radius: 20px;
+  --spring: cubic-bezier(.2,.9,.25,1);
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #000000; --card: #1c1c1e; --card-2: #232325;
+    --text: #f5f5f7; --text-2: #a1a1a6; --text-3: #8e8e93;
+    --sep: rgba(255,255,255,.1); --fill: rgba(120,120,128,.26); --fill-2: rgba(120,120,128,.16);
+    --accent: #2997ff; --s1: #3987e5; --s2: #d95926;
+    --good-ink: #30d158; --warning-ink: #ffd60a; --serious-ink: #ff9f0a; --critical-ink: #ff6961;
+    --chrome: rgba(0,0,0,.66);
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #000000; --card: #1c1c1e; --card-2: #232325;
+  --text: #f5f5f7; --text-2: #a1a1a6; --text-3: #8e8e93;
+  --sep: rgba(255,255,255,.1); --fill: rgba(120,120,128,.26); --fill-2: rgba(120,120,128,.16);
+  --accent: #2997ff; --s1: #3987e5; --s2: #d95926;
+  --good-ink: #30d158; --warning-ink: #ffd60a; --serious-ink: #ff9f0a; --critical-ink: #ff6961;
+  --chrome: rgba(0,0,0,.66);
+  --shadow: none;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 100%/1.47 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px; -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+button { font: inherit; color: inherit; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- chrome ---------- */
+header.top {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--chrome);
+  -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  transition: box-shadow .25s ease;
+}
+header.top.scrolled { box-shadow: 0 1px 0 var(--sep); }
+.top-inner { max-width: 1320px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.brand svg { flex: none; }
+.brand h1 { margin: 0; font-size: 1.25rem; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand h1 { min-width: 0; }
+.live { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--fill-2); font-size: .8rem; font-weight: 500; color: var(--text-2); white-space: nowrap; }
+.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--good); position: relative; }
+.live i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: ping 2.4s var(--spring) infinite; }
+.live.stale i { background: var(--warning); }
+.live.down i { background: var(--critical); }
+.live.stale i::after, .live.down i::after { animation: none; }
+@keyframes ping { 0% { transform: scale(1); opacity: .6; } 70%,100% { transform: scale(2.6); opacity: 0; } }
+
+main { max-width: 1320px; margin: 0 auto; padding: 8px 24px 64px; }
+.banner { display: none; margin: 8px 0 16px; padding: 12px 16px; border-radius: 14px; background: color-mix(in srgb, var(--critical) 12%, var(--card)); color: var(--critical-ink); font-size: .9rem; font-weight: 500; }
+.banner.show { display: block; }
+.banner.demo { background: color-mix(in srgb, var(--s1) 10%, var(--card)); color: var(--text); }
+
+.section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 28px 4px 12px; }
+.section-title h2 { margin: 0; font-size: 1.5rem; line-height: 1.15; letter-spacing: -0.02em; font-weight: 700; }
+.section-title .aside { color: var(--text-2); font-size: .85rem; }
+
+/* ---------- node strip ---------- */
+.nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.node-card {
+  all: unset; box-sizing: border-box; cursor: pointer; display: block;
+  background: var(--card); border-radius: 18px; padding: 14px 16px 16px; box-shadow: var(--shadow);
+  outline: 2px solid transparent; outline-offset: -2px;
+  transition: transform .12s ease-out, outline-color .2s ease;
+}
+.node-card:active { transform: scale(.98); }
+.node-card:focus-visible { outline-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.node-card[aria-pressed="true"] { outline-color: var(--accent); }
+.node-card .nc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.node-card .nc-name { font-weight: 600; font-size: 1rem; letter-spacing: -0.01em; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-card.offline { opacity: .55; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--text-3); }
+.dot.on { background: var(--good); }
+.dot.off { background: var(--critical); }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; background: var(--fill-2); font-size: .75rem; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.chip .dot { width: 6px; height: 6px; }
+.mini { display: grid; grid-template-columns: 34px 1fr 42px; align-items: center; gap: 8px; font-size: .78rem; color: var(--text-2); }
+.mini + .mini { margin-top: 6px; }
+.mini b { font-weight: 600; color: var(--text); text-align: right; }
+.bar { height: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.bar > span { display: block; height: 100%; border-radius: 3px; background: var(--s1); transform-origin: left; transition: width .6s var(--spring); }
+
+/* ---------- grid + cards ---------- */
+.grid { display: grid; grid-template-columns: repeat(12, minmax(0,1fr)); gap: 16px; align-items: start; }
+.card { background: var(--card); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); min-width: 0; }
+.span-4 { grid-column: span 4; } .span-5 { grid-column: span 5; } .span-6 { grid-column: span 6; } .span-7 { grid-column: span 7; } .span-12 { grid-column: span 12; }
+@media (max-width: 1080px) { .span-4 { grid-column: span 6; } .span-4:last-child { grid-column: span 12; } .span-5, .span-7 { grid-column: span 12; } }
+@media (max-width: 760px) { .grid > * { grid-column: span 12 !important; } }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; min-height: 28px; flex-wrap: wrap; }
+.card-head h3 { margin: 0; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; color: var(--text-2); }
+
+/* hero metric cards */
+.hero { display: grid; grid-template-columns: 112px 1fr; gap: 18px; align-items: center; }
+.ring { position: relative; width: 112px; height: 112px; }
+.ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring .track { stroke: var(--fill); }
+.ring .prog { stroke: var(--s1); transition: stroke-dashoffset .8s var(--spring), stroke .4s ease; }
+.ring .val { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.ring .val b { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+.ring .val b small { font-size: .9rem; font-weight: 600; letter-spacing: 0; margin-left: 1px; color: var(--text-2); }
+.ring .val span { display: block; margin-top: 4px; font-size: .72rem; color: var(--text-2); font-weight: 500; }
+.meta { display: grid; gap: 6px; font-size: .85rem; min-width: 0; }
+.meta .row { display: flex; justify-content: space-between; gap: 10px; min-width: 0; }
+.meta .row span:first-child { color: var(--text-2); white-space: nowrap; }
+.meta .row span:last-child { font-weight: 500; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model { font-size: .85rem; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 2px; line-height: 1.3; }
+
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 600; }
+.status .dot { width: 8px; height: 8px; }
+.st-good { color: var(--good-ink); } .st-good .dot { background: var(--good); }
+.st-warning { color: var(--warning-ink); } .st-warning .dot { background: var(--warning); }
+.st-serious { color: var(--serious-ink); } .st-serious .dot { background: var(--serious); }
+.st-critical { color: var(--critical-ink); } .st-critical .dot { background: var(--critical); }
+
+/* sparkline */
+.spark-wrap { position: relative; height: 64px; margin-top: 16px; }
+.spark-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.spark-wrap .line { fill: none; stroke: var(--s1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.spark-wrap .area { opacity: .16; }
+.spark-wrap .grid-l { stroke: var(--sep); stroke-width: 1; stroke-dasharray: 2 3; }
+.spark-wrap .cross { stroke: var(--text-3); stroke-width: 1; opacity: 0; }
+.spark-wrap .hdot { fill: var(--s1); stroke: var(--card); stroke-width: 2; opacity: 0; }
+.spark-wrap.hover .cross, .spark-wrap.hover .hdot { opacity: 1; }
+.spark-cap { display: flex; justify-content: space-between; font-size: .72rem; color: var(--text-3); margin-top: 4px; }
+.tip {
+  position: absolute; top: -8px; pointer-events: none; z-index: 5; transform: translate(-50%, -100%);
+  background: var(--card-2); color: var(--text); border-radius: 10px; padding: 6px 10px; font-size: .78rem; white-space: nowrap;
+  box-shadow: 0 0 0 1px var(--sep), 0 8px 24px rgba(0,0,0,.14); opacity: 0; transition: opacity .12s ease;
+}
+.tip b { font-weight: 700; }
+.tip span { color: var(--text-2); margin-left: 6px; }
+.hover > .tip, .tip.show { opacity: 1; }
+
+/* cores */
+.cores { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 4px; }
+.core { position: relative; height: 34px; border-radius: 7px; background: var(--fill-2); display: grid; place-items: center; font-size: .68rem; font-weight: 600; transition: background-color .5s ease; }
+.core em { font-style: normal; color: var(--text); opacity: .85; }
+.legend { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .72rem; color: var(--text-3); }
+.legend .ramp { height: 6px; width: 96px; border-radius: 3px; background: linear-gradient(90deg, var(--fill-2), var(--s1)); }
+
+/* list rows */
+.list { display: grid; gap: 2px; }
+.lrow { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--sep); font-size: .88rem; }
+.lrow:last-child { border-bottom: 0; }
+.lrow .nm { min-width: 0; }
+.lrow .nm b { font-weight: 500; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lrow .nm small { color: var(--text-2); font-size: .76rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lrow .v { font-weight: 600; text-align: right; white-space: nowrap; }
+.lrow .bar { grid-column: 1 / -1; margin-top: -2px; }
+.group-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); font-weight: 600; margin: 14px 0 2px; }
+.group-label:first-child { margin-top: 0; }
+.temp-v { display: inline-flex; align-items: center; gap: 8px; }
+.io { display: inline-flex; gap: 12px; }
+.io i { font-style: normal; display: inline-flex; align-items: center; gap: 4px; }
+.io i::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--s1); }
+.io i.o::before { background: var(--s2); }
+.dual { display: grid; gap: 3px; grid-column: 1 / -1; }
+.dual .bar { height: 4px; }
+.dual .bar.o > span { background: var(--s2); }
+
+/* segmented control */
+.seg { position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--fill); border-radius: 9px; padding: 2px; }
+.seg button { all: unset; box-sizing: border-box; position: relative; z-index: 1; padding: 5px 12px; font-size: .8rem; font-weight: 500; text-align: center; cursor: pointer; border-radius: 7px; white-space: nowrap; transition: transform .1s ease-out; }
+.seg button:active { transform: scale(.95); }
+.seg button:focus-visible { outline: 2px solid var(--accent); }
+.seg button[aria-pressed="true"] { font-weight: 600; }
+.seg .thumb { position: absolute; top: 2px; bottom: 2px; left: 0; border-radius: 7px; background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04); transition: transform .45s var(--spring), width .45s var(--spring); }
+:root[data-theme="dark"] .seg .thumb { background: #636366; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .seg .thumb { background: #636366; } }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* top consumers */
+.top-list { position: relative; }
+.trow { display: grid; grid-template-columns: 22px minmax(0,1fr) 92px 112px; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--sep); will-change: transform; }
+.trow:last-child { border-bottom: 0; }
+.trow .rank { font-size: .8rem; color: var(--text-3); font-weight: 600; text-align: center; }
+.trow .who { min-width: 0; }
+.trow .who b { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: .92rem; min-width: 0; }
+.trow .who b span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trow .who small { display: block; color: var(--text-2); font-size: .76rem; margin-top: 1px; }
+.trow .who .bar { margin-top: 7px; }
+.trow .num { text-align: right; font-weight: 600; font-size: .9rem; white-space: nowrap; }
+.trow .num small { display: block; font-weight: 400; color: var(--text-2); font-size: .74rem; }
+.trow .mspark { height: 30px; position: relative; }
+.trow .mspark svg { width: 100%; height: 100%; overflow: visible; display: block; }
+.trow .mspark path { fill: none; stroke: var(--s1); stroke-width: 1.6; stroke-linejoin: round; }
+.badge { flex: none; font-size: .64rem; font-weight: 700; letter-spacing: .04em; padding: 1px 6px; border-radius: 5px; background: var(--fill); color: var(--text-2); }
+.badge.vm { background: color-mix(in srgb, var(--s1) 16%, transparent); color: var(--s1); }
+.empty { color: var(--text-2); font-size: .88rem; padding: 18px 0; text-align: center; }
+.empty b { display: block; color: var(--text); font-weight: 600; margin-bottom: 2px; }
+@media (max-width: 560px) { .trow { grid-template-columns: 18px minmax(0,1fr) 84px; } .trow .mspark { display: none; } }
+
+/* table */
+.tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.search { appearance: none; border: 0; background: var(--fill); color: var(--text); border-radius: 9px; padding: 6px 10px 6px 30px; font: inherit; font-size: .85rem; width: 200px; max-width: 100%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2386868b' stroke-width='2.6' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 10px center; }
+.search:focus { outline: 2px solid var(--accent); }
+.tbl-wrap { overflow-x: auto; margin: 0 -20px; padding: 0 20px; }
+table { width: 100%; border-collapse: collapse; font-size: .86rem; min-width: 760px; }
+th { text-align: left; font-weight: 600; color: var(--text-2); font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; padding: 0 8px 8px; white-space: nowrap; }
+th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+th button:focus-visible { outline: 2px solid var(--accent); border-radius: 4px; }
+th button::after { content: ""; width: 0; height: 0; border: 4px solid transparent; opacity: 0; }
+th[aria-sort="descending"] button::after { border-top-color: currentColor; margin-top: 4px; opacity: 1; }
+th[aria-sort="ascending"] button::after { border-bottom-color: currentColor; margin-bottom: 4px; opacity: 1; }
+th.r, td.r { text-align: right; }
+th.r button { flex-direction: row-reverse; }
+td { padding: 9px 8px; border-top: 1px solid var(--sep); white-space: nowrap; }
+td.name { font-weight: 500; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+td .sub { color: var(--text-2); font-size: .76rem; }
+tr.stopped td { color: var(--text-3); }
+.cellbar { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.cellbar .bar { width: 54px; height: 4px; }
+
+footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 32px; color: var(--text-3); font-size: .75rem; text-align: center; }
+
+@media (max-width: 760px) {
+  .top-inner { padding: 12px 16px; }
+  main { padding: 4px 16px 48px; }
+  footer { padding: 0 16px 24px; }
+  .hero { grid-template-columns: 96px 1fr; gap: 14px; }
+  .ring { width: 96px; height: 96px; }
+  .ring .val b { font-size: 1.45rem; }
+  .card { padding: 16px; }
+  .tbl-wrap { margin: 0 -16px; padding: 0 16px; }
+  .section-title h2 { font-size: 1.3rem; }
+  .live .t { display: none; }
+  .icon-btn:not(.back) .t { display: none; }
+  .icon-btn:not(.back) { padding: 0 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation: none !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  header.top { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-contrast: more) {
+  .card, .node-card { box-shadow: 0 0 0 1px var(--text-3); }
+}
+
+/* ================= settings ================= */
+.brand-logo { height: 34px; width: auto; max-width: 160px; object-fit: contain; flex: none; }
+.brand.logo-only h1 { display: none; }
+.inline-in { all: unset; box-sizing: border-box; text-align: right; color: var(--text-2); font-size: .95rem; min-width: 0; flex: 1; padding: 4px 0; }
+.inline-in:focus { color: var(--text); }
+.logo-prev { height: 44px; min-width: 44px; max-width: 120px; border-radius: 10px; flex: none; display: grid; place-items: center; padding: 4px;
+  background: repeating-conic-gradient(var(--fill) 0 25%, transparent 0 50%) 0 0 / 12px 12px; }
+.logo-prev img { max-height: 36px; max-width: 112px; object-fit: contain; display: block; }
+.logo-prev svg { width: 34px; height: 34px; }
+.cell.drop { outline: 2px dashed var(--accent); outline-offset: -4px; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.mini-btn { all: unset; cursor: pointer; padding: 6px 12px; border-radius: 999px; background: var(--fill); color: var(--accent); font-size: .82rem; font-weight: 600; white-space: nowrap; transition: transform .1s ease-out; }
+.mini-btn:active { transform: scale(.95); }
+.mini-btn:focus-visible { outline: 2px solid var(--accent); }
+.mini-btn.danger { color: var(--critical-ink); }
+
+.icon-btn { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; background: var(--fill-2); color: var(--text); font-size: .82rem; font-weight: 500; transition: transform .1s ease-out, background-color .2s ease; white-space: nowrap; }
+.icon-btn:active { transform: scale(.95); }
+.icon-btn:focus-visible { outline: 2px solid var(--accent); }
+.icon-btn svg { width: 16px; height: 16px; }
+.icon-btn.back { color: var(--accent); background: transparent; padding-left: 4px; font-size: .95rem; }
+[hidden] { display: none !important; }
+
+.settings { max-width: 760px; margin: 0 auto; padding: 8px 24px 80px; }
+.settings h2.page { font-size: 2rem; line-height: 1.1; letter-spacing: -0.025em; font-weight: 700; margin: 12px 4px 4px; }
+.settings .lede { color: var(--text-2); margin: 0 4px 8px; font-size: .92rem; }
+.save-state { font-size: .8rem; color: var(--text-2); display: inline-flex; align-items: center; gap: 6px; transition: opacity .3s ease; }
+.save-state.ok::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+
+.g-title { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); font-weight: 600; margin: 28px 16px 8px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.g-foot { font-size: .8rem; color: var(--text-2); margin: 8px 16px 0; line-height: 1.45; }
+.group { background: var(--card); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+.cell { display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 52px; position: relative; }
+.cell + .cell::before, .cell + .rule::before, .rule + .rule::before, .rule + .cell::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--sep); }
+.cell .txt { flex: 1; min-width: 0; }
+.cell .txt b { display: block; font-weight: 500; font-size: .95rem; }
+.cell .txt small { display: block; color: var(--text-2); font-size: .8rem; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell.tap { cursor: pointer; transition: background-color .15s ease; }
+.cell.tap:active { background: var(--fill-2); }
+.cell.tap:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chev { width: 8px; height: 8px; border-right: 2px solid var(--text-3); border-top: 2px solid var(--text-3); transform: rotate(45deg); flex: none; margin-right: 4px; }
+.avatar { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: .85rem; flex: none; }
+.add { color: var(--accent); font-weight: 500; }
+.add .avatar { background: var(--fill); color: var(--accent); font-size: 1.2rem; font-weight: 500; }
+
+/* iOS-style switch */
+.switch { position: relative; flex: none; width: 51px; height: 31px; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+.switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--fill); transition: background-color .25s ease; }
+.switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 3px 8px rgba(0,0,0,.15), 0 1px 1px rgba(0,0,0,.16); transition: transform .35s var(--spring), width .2s ease; }
+.switch input:checked + span { background: #34c759; }
+.switch input:checked + span::after { transform: translateX(20px); }
+.switch input:active + span::after { width: 31px; }
+.switch input:checked:active + span::after { transform: translateX(16px); }
+.switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* rules */
+.rule { position: relative; }
+.rule .cell { min-height: 60px; }
+.rule .ico { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex: none; color: #fff; }
+.rule .ico svg { width: 17px; height: 17px; }
+.rule-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .4s var(--spring); }
+.rule.on .rule-body { grid-template-rows: 1fr; }
+.rule-body > div { overflow: hidden; }
+.rule-inner { padding: 0 16px 16px 58px; display: grid; gap: 12px; }
+.params { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.param { display: inline-flex; align-items: center; gap: 8px; font-size: .85rem; color: var(--text-2); }
+.stepper { display: inline-flex; align-items: center; background: var(--fill); border-radius: 9px; height: 30px; }
+.stepper button { all: unset; cursor: pointer; width: 28px; height: 30px; display: grid; place-items: center; color: var(--text); font-size: 1rem; border-radius: 9px; }
+.stepper button:active { background: var(--fill); }
+.stepper button:focus-visible { outline: 2px solid var(--accent); }
+.stepper input { all: unset; width: 3.2ch; text-align: center; font-weight: 600; color: var(--text); font-size: .88rem; }
+.stepper em { font-style: normal; color: var(--text-2); font-size: .78rem; padding-right: 8px; margin-left: -2px; }
+.sendto { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .8rem; color: var(--text-2); }
+.pill { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: .8rem; font-weight: 500; background: var(--fill-2); color: var(--text-2); transition: transform .1s ease-out, background-color .2s ease, color .2s ease; }
+.pill:active { transform: scale(.95); }
+.pill:focus-visible { outline: 2px solid var(--accent); }
+.pill[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.pill[aria-pressed="true"]::before { content: "✓"; font-size: .72rem; font-weight: 700; }
+.pill:disabled { opacity: .4; cursor: default; }
+.seg.sm button { padding: 3px 10px; font-size: .76rem; }
+.warnline { font-size: .78rem; color: var(--serious-ink); }
+
+/* inputs */
+.field { display: grid; gap: 6px; }
+.field label { font-size: .8rem; font-weight: 600; color: var(--text-2); }
+.field input, .field select, .timein { appearance: none; border: 0; background: var(--fill); color: var(--text); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: .92rem; width: 100%; }
+.field input:focus, .field select:focus, .timein:focus { outline: 2px solid var(--accent); }
+.field input, .field select { height: 44px; }
+.pill.sw::before { display: none; }
+.field input.mono { font-family: var(--mono); font-size: .84rem; letter-spacing: .02em; }
+.field .hint { font-size: .76rem; color: var(--text-3); }
+.field .err { font-size: .76rem; color: var(--critical-ink); display: none; }
+.field.bad .err { display: block; }
+.field.bad input { outline: 2px solid var(--critical); }
+.timein { width: auto; padding: 5px 8px; font-size: .85rem; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 520px) { .row2 { grid-template-columns: 1fr; } .rule-inner { padding-left: 16px; } }
+
+/* sheet */
+.scrim { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.32); opacity: 0; transition: opacity .3s ease; }
+.scrim.open { opacity: 1; }
+.sheet { position: fixed; z-index: 51; left: 50%; bottom: 0; width: min(560px, 100%); max-height: 92vh; overflow: auto; background: var(--card); border-radius: 18px 18px 0 0; padding: 8px 20px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(0,0,0,.2);
+  transform: translate(-50%, 100%); transition: transform .45s var(--spring); }
+.sheet.open { transform: translate(-50%, 0); }
+@media (min-width: 700px) { .sheet { bottom: auto; top: 50%; border-radius: 18px; transform: translate(-50%, -46%) scale(.96); opacity: 0; transition: transform .4s var(--spring), opacity .25s ease; }
+  .sheet.open { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+.sheet .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--fill); margin: 0 auto 8px; }
+@media (min-width: 700px) { .sheet .grab { display: none; } }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 16px; }
+.sheet-head h3 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+.txtbtn { all: unset; cursor: pointer; color: var(--accent); font-size: .95rem; padding: 6px 4px; border-radius: 6px; }
+.txtbtn.strong { font-weight: 600; }
+.txtbtn:disabled { color: var(--text-3); cursor: default; }
+.txtbtn:focus-visible { outline: 2px solid var(--accent); }
+.sheet .form { display: grid; gap: 14px; }
+.btnrow { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.btn { all: unset; box-sizing: border-box; cursor: pointer; flex: 1; text-align: center; padding: 11px 16px; border-radius: 12px; background: var(--fill); color: var(--accent); font-weight: 600; font-size: .92rem; transition: transform .1s ease-out; white-space: nowrap; }
+.btn:active { transform: scale(.97); }
+.btn:focus-visible { outline: 2px solid var(--accent); }
+.btn.danger { color: var(--critical-ink); }
+.btn:disabled { opacity: .5; cursor: default; }
+.toast { position: fixed; left: 50%; bottom: 24px; z-index: 60; transform: translate(-50%, 20px); opacity: 0; background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: .86rem; font-weight: 500; transition: transform .4s var(--spring), opacity .25s ease; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
+.toast.show { transform: translate(-50%, 0); opacity: 1; }
+@media (max-width: 760px) { .settings { padding: 4px 16px 64px; } .settings h2.page { font-size: 1.6rem; } }
+</style>
+</head>
+<body>
+<header class="top" id="top">
+  <div class="top-inner">
+    <button class="icon-btn back" id="closeSettings" hidden aria-label="Back to dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>Dashboard</button>
+    <div class="brand">
+      <svg id="brandMark" width="34" height="34" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M8 21l5-6 4 4 7-9" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <img id="brandLogo" class="brand-logo" alt="" hidden>
+      <h1 id="title">Proxmox Dashboard</h1>
+    </div>
+    <button class="icon-btn" id="openSettings" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span class="t">Settings</span></button>
+    <div class="live stale" id="live" role="status" aria-live="polite"><i></i><span class="t" id="liveText">Connecting</span></div>
+  </div>
+</header>
+
+<main id="dashView">
+  <div class="banner" id="banner"></div>
+
+  <div class="section-title"><h2>Nodes</h2><span class="aside" id="nodesAside"></span></div>
+  <div class="nodes" id="nodes" role="group" aria-label="Choose a node"></div>
+
+  <div class="section-title"><h2 id="nodeTitle">—</h2><span class="aside" id="nodeAside"></span></div>
+  <div class="grid">
+    <section class="card span-4" aria-labelledby="h-cpu">
+      <div class="card-head"><h3 id="h-cpu">Processor</h3><span class="chip" id="cpuChip"></span></div>
+      <div class="hero">
+        <div class="ring" id="ringCpu"></div>
+        <div class="meta" id="metaCpu"></div>
+      </div>
+      <div class="spark-wrap" id="sparkCpu"></div>
+      <div class="spark-cap"><span id="capCpu">10 min</span><span>now</span></div>
+    </section>
+    <section class="card span-4" aria-labelledby="h-mem">
+      <div class="card-head"><h3 id="h-mem">Memory</h3><span class="chip" id="memChip"></span></div>
+      <div class="hero">
+        <div class="ring" id="ringMem"></div>
+        <div class="meta" id="metaMem"></div>
+      </div>
+      <div class="spark-wrap" id="sparkMem"></div>
+      <div class="spark-cap"><span id="capMem">10 min</span><span>now</span></div>
+    </section>
+    <section class="card span-4" aria-labelledby="h-temp">
+      <div class="card-head"><h3 id="h-temp">Temperature</h3><span id="tempStatus"></span></div>
+      <div class="hero">
+        <div class="ring" id="ringTemp"></div>
+        <div class="meta" id="metaTemp"></div>
+      </div>
+      <div class="spark-wrap" id="sparkTemp"></div>
+      <div class="spark-cap"><span id="capTemp">10 min</span><span>now</span></div>
+    </section>
+
+    <section class="card span-6" aria-labelledby="h-cores">
+      <div class="card-head"><h3 id="h-cores">Per-thread load</h3><span class="chip" id="coresChip"></span></div>
+      <div id="cores"></div>
+    </section>
+    <section class="card span-6" aria-labelledby="h-sens">
+      <div class="card-head"><h3 id="h-sens">Sensors</h3><span class="chip" id="sensChip"></span></div>
+      <div id="sensors"></div>
+    </section>
+
+    <section class="card span-6" aria-labelledby="h-net">
+      <div class="card-head"><h3 id="h-net">Network</h3><span class="io"><i>Receive</i><i class="o">Send</i></span></div>
+      <div id="nics"></div>
+    </section>
+    <section class="card span-6" aria-labelledby="h-disk">
+      <div class="card-head"><h3 id="h-disk">Disks</h3><span class="io"><i>Read</i><i class="o">Write</i></span></div>
+      <div id="disks"></div>
+    </section>
+  </div>
+
+  <div class="section-title"><h2>Who's using it</h2><span class="aside" id="topAside"></span></div>
+  <div class="grid">
+    <section class="card span-7" aria-labelledby="h-top">
+      <div class="card-head">
+        <h3 id="h-top">Top guests</h3>
+        <div class="controls">
+          <div class="seg" id="segMetric" role="group" aria-label="Rank by">
+            <button data-v="cpu">CPU</button><button data-v="mem">Memory</button><button data-v="net">Network</button><button data-v="disk">Disk</button>
+          </div>
+          <div class="seg" id="segScope" role="group" aria-label="Scope">
+            <button data-v="node">This node</button><button data-v="all">All nodes</button>
+          </div>
+        </div>
+      </div>
+      <div class="top-list" id="topList"></div>
+    </section>
+    <section class="card span-5" aria-labelledby="h-store">
+      <div class="card-head"><h3 id="h-store">Storage</h3><span class="chip" id="storeChip"></span></div>
+      <div id="storage"></div>
+    </section>
+
+    <section class="card span-12" aria-labelledby="h-guests">
+      <div class="card-head">
+        <h3 id="h-guests">All guests</h3>
+        <div class="tools">
+          <input class="search" id="q" type="search" placeholder="Filter" aria-label="Filter guests">
+          <div class="seg" id="segShow" role="group" aria-label="Show">
+            <button data-v="running">Running</button><button data-v="all">All</button>
+          </div>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</main>
+<div class="settings" id="settingsView" hidden>
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px">
+    <h2 class="page">Settings</h2>
+    <span class="save-state" id="saveState" aria-live="polite"></span>
+  </div>
+
+  <div class="g-title"><span>Dashboard</span></div>
+  <div class="group" id="brandGroup"></div>
+  <p class="g-foot">PNG, SVG, WebP or JPEG up to 1 MB. Shown 34px tall in the header (wide logos are fine) and used as the browser tab icon. A transparent background looks best in both light and dark mode.</p>
+
+  <h2 class="page" style="font-size:1.4rem;margin-top:40px">Notifications</h2>
+  <p class="lede">Alerts are sent through Pushover. Add a destination for each app or group that should hear about it, then choose which alerts go where.</p>
+
+  <div class="g-title"><span>Pushover destinations</span><span id="destCount"></span></div>
+  <div class="group" id="destList"></div>
+  <p class="g-foot">Each destination is an application token plus a user or group key from pushover.net. Tokens are stored on the cluster in <code>/etc/pve/priv</code> and are never sent back to the browser in full.</p>
+
+  <div id="ruleGroups"></div>
+
+  <div class="g-title"><span>Delivery</span></div>
+  <div class="group" id="delivery"></div>
+  <p class="g-foot" id="senderNote"></p>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+  <div class="grab"></div>
+  <div class="sheet-head">
+    <button class="txtbtn" id="sheetCancel">Cancel</button>
+    <h3 id="sheetTitle">New destination</h3>
+    <button class="txtbtn strong" id="sheetSave">Add</button>
+  </div>
+  <div class="form">
+    <div class="field" id="fLabel"><label for="inLabel">Label</label><input id="inLabel" maxlength="40" placeholder="e.g. 's phone, On-call" autocomplete="off"><span class="err">Give it a label so you can tell destinations apart.</span></div>
+    <div class="field"><label>Colour</label><div class="sendto" id="swatches"></div></div>
+    <div class="field" id="fToken"><label for="inToken">Application API token</label><input id="inToken" class="mono" maxlength="30" autocomplete="off" spellcheck="false" placeholder="azGDORePK8gMaC0QOYAMyEEuzJnyUi"><span class="hint" id="tokenHint">From pushover.net → Your Applications. 30 characters.</span><span class="err">An app token is 30 letters and numbers.</span></div>
+    <div class="field" id="fUser"><label for="inUser">User or group key</label><input id="inUser" class="mono" maxlength="30" autocomplete="off" spellcheck="false" placeholder="uQiRzpo4DXghDmr9QzzfQu27cmVRsG"><span class="hint" id="userHint">Use a group key to reach several people at once. 30 characters.</span><span class="err">A user or group key is 30 letters and numbers.</span></div>
+    <div class="row2">
+      <div class="field"><label for="inDevice">Devices</label><input id="inDevice" placeholder="All devices" autocomplete="off"><span class="hint">Optional, comma separated.</span></div>
+      <div class="field"><label for="inSound">Sound</label><select id="inSound"></select></div>
+    </div>
+    <div class="btnrow">
+      <button class="btn" id="sheetTest">Send test notification</button>
+      <button class="btn danger" id="sheetDelete">Delete</button>
+    </div>
+  </div>
+</div>
+<div class="scrim" id="pwScrim" hidden></div>
+<div class="sheet" id="pwSheet" role="dialog" aria-modal="true" aria-labelledby="pwTitle" hidden>
+  <div class="grab"></div>
+  <div class="sheet-head">
+    <button class="txtbtn" id="pwCancel">Cancel</button>
+    <h3 id="pwTitle">Settings password</h3>
+    <button class="txtbtn strong" id="pwSave">Unlock</button>
+  </div>
+  <div class="form">
+    <div class="field" id="fPw"><label for="inPw">Password</label><input id="inPw" type="password" autocomplete="current-password" placeholder="Enter the dashboard password"><span class="hint">Set when the dashboard was installed. Only needed to change settings; the dashboard itself stays open.</span><span class="err" id="pwErr"></span></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<footer id="foot">Proxmox Dashboard</footer>
+
+<script>
+(() => {
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("pvedash." + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("pvedash." + k, JSON.stringify(v)); } catch {} },
+};
+
+/* ---------------- formatting ---------------- */
+const pct = (f, d = 0) => f == null ? "—" : (f * 100).toFixed(d) + "%";
+const GiB = 1024 ** 3;
+function bytes(b, d = 1) {
+  if (b == null) return "—";
+  const u = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]; let i = 0;
+  while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return (i === 0 ? b.toFixed(0) : b.toFixed(b >= 100 ? 0 : d)) + " " + u[i];
+}
+function rate(bps) {
+  if (!bps || bps < 1) return "0 B/s";
+  const u = ["B/s", "KB/s", "MB/s", "GB/s"]; let i = 0;
+  while (bps >= 1000 && i < u.length - 1) { bps /= 1000; i++; }
+  return bps.toFixed(bps >= 100 || i === 0 ? 0 : 1) + " " + u[i];
+}
+function bits(bps) {
+  const b = (bps || 0) * 8;
+  if (b >= 1e9) return (b / 1e9).toFixed(2) + " Gb/s";
+  if (b >= 1e6) return (b / 1e6).toFixed(b >= 1e8 ? 0 : 1) + " Mb/s";
+  if (b >= 1e3) return (b / 1e3).toFixed(0) + " Kb/s";
+  return b.toFixed(0) + " b/s";
+}
+function uptime(s) {
+  if (!s) return "—";
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+}
+function ago(sec) {
+  sec = Math.max(0, Math.round(sec));
+  if (sec < 60) return sec + "s ago";
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return s ? `${m}m ${s}s ago` : `${m}m ago`;
+}
+const temp = (c) => c == null ? "—" : Math.round(c) + "°C";
+const shortModel = (m) => (m || "").replace(/\((R|TM|tm|r)\)/g, "").replace(/\s+CPU\s+@.*$/, "").replace(/\s+\d+-Core Processor$/, "").replace(/\s+Processor$/, "").replace(/\s+/g, " ").trim();
+
+/* temperature banding - status colors always ship with a text label */
+const BANDS = {
+  cpu:   [65, 80, 90], board: [65, 80, 90], gpu: [70, 82, 92], nic: [70, 85, 95],
+  nvme:  [55, 70, 80], drive: [45, 50, 55],
+};
+function tempStatus(v, kind = "cpu", crit) {
+  if (v == null) return null;
+  let [a, b, c] = BANDS[kind] || BANDS.cpu;
+  if (crit && crit > 0 && crit < 120) c = Math.min(c, crit - 5);
+  if (v >= c) return { k: "critical", label: "Critical" };
+  if (v >= b) return { k: "serious", label: "Hot" };
+  if (v >= a) return { k: "warning", label: "Warm" };
+  return { k: "good", label: "Normal" };
+}
+const statusHTML = (s) => s ? `<span class="status st-${s.k}"><span class="dot"></span>${s.label}</span>` : "";
+
+/* ---------------- number tween ---------------- */
+function tweenText(el, to, fmt) {
+  if (to == null || !isFinite(to)) { el.textContent = fmt(null); el._v = null; return; }
+  const from = el._v ?? to;
+  el._v = to;
+  if (reduced || from === to) { el.innerHTML = fmt(to); return; }
+  cancelAnimationFrame(el._raf);
+  const t0 = performance.now(), dur = 600;
+  const step = (t) => {
+    const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 4);
+    el.innerHTML = fmt(from + (to - from) * e);
+    if (p < 1) el._raf = requestAnimationFrame(step);
+  };
+  el._raf = requestAnimationFrame(step);
+}
+
+/* ---------------- ring ---------------- */
+function Ring(host, label) {
+  const R = 50, C = 2 * Math.PI * R;
+  host.innerHTML = `<svg viewBox="0 0 120 120" aria-hidden="true"><circle class="track" cx="60" cy="60" r="${R}" fill="none" stroke-width="11"/><circle class="prog" cx="60" cy="60" r="${R}" fill="none" stroke-width="11" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg><div class="val"><b></b><span>${esc(label)}</span></div>`;
+  const prog = host.querySelector(".prog"), b = host.querySelector("b"), sub = host.querySelector("span");
+  return {
+    set(frac, num, fmt, color, subtitle) {
+      const f = frac == null ? 0 : Math.max(0, Math.min(1, frac));
+      prog.style.strokeDashoffset = C * (1 - (f > 0 ? Math.max(f, 0.012) : 0));
+      prog.style.stroke = color || "";
+      tweenText(b, num, fmt);
+      if (subtitle != null) sub.textContent = subtitle;
+      host.setAttribute("role", "img");
+      host.setAttribute("aria-label", `${label}: ${b.textContent}`);
+    },
+  };
+}
+
+/* ---------------- sparkline with crosshair tooltip ---------------- */
+let sparkId = 0;
+function Spark(host, { domain, fmt, colorVar = "--s1" }) {
+  const id = "g" + (++sparkId);
+  host.innerHTML = `<svg aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(${colorVar})"/><stop offset="1" stop-color="var(${colorVar})" stop-opacity="0"/></linearGradient></defs>
+    <line class="grid-l g1"/><line class="grid-l g2"/><path class="area" fill="url(#${id})"/><path class="line"/><line class="cross"/><circle class="hdot" r="4"/></svg><div class="tip"></div>`;
+  const svg = host.querySelector("svg"), area = host.querySelector(".area"), line = host.querySelector(".line"),
+    cross = host.querySelector(".cross"), dot = host.querySelector(".hdot"), tip = host.querySelector(".tip"),
+    g1 = host.querySelector(".g1"), g2 = host.querySelector(".g2");
+  let pts = [], data = [], hoverX = null;
+  function draw() {
+    const w = host.clientWidth, h = host.clientHeight;
+    if (!w) return;
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    const [lo, hi] = typeof domain === "function" ? domain(data) : domain;
+    const pad = 3, n = data.length;
+    for (const [g, f] of [[g1, .5], [g2, 1]]) { const y = pad + (h - 2 * pad) * (1 - f); g.setAttribute("x1", 0); g.setAttribute("x2", w); g.setAttribute("y1", y); g.setAttribute("y2", y); }
+    pts = [];
+    if (!n) { line.setAttribute("d", ""); area.setAttribute("d", ""); return; }
+    const t0 = data[0][0], t1 = data[n - 1][0], span = Math.max(1, t1 - t0);
+    data.forEach(([t, v]) => {
+      if (v == null) return;
+      const x = n === 1 ? w : (t - t0) / span * w;
+      const y = pad + (h - 2 * pad) * (1 - Math.max(0, Math.min(1, (v - lo) / (hi - lo))));
+      pts.push([x, y, t, v]);
+    });
+    if (!pts.length) { line.setAttribute("d", ""); area.setAttribute("d", ""); return; }
+    const d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join("");
+    line.setAttribute("d", d);
+    area.setAttribute("d", d + `L${pts[pts.length - 1][0].toFixed(1)} ${h}L${pts[0][0].toFixed(1)} ${h}Z`);
+    if (hoverX != null) hover(hoverX);
+  }
+  function hover(x) {
+    if (!pts.length) return;
+    let best = pts[0];
+    for (const p of pts) if (Math.abs(p[0] - x) < Math.abs(best[0] - x)) best = p;
+    cross.setAttribute("x1", best[0]); cross.setAttribute("x2", best[0]); cross.setAttribute("y1", 0); cross.setAttribute("y2", host.clientHeight);
+    dot.setAttribute("cx", best[0]); dot.setAttribute("cy", best[1]);
+    const last = data[data.length - 1][0];
+    tip.innerHTML = `<b>${fmt(best[3])}</b><span>${best[2] === last ? "now" : ago(last - best[2])}</span>`;
+    const tw = tip.offsetWidth || 100, w = host.clientWidth;
+    tip.style.left = Math.max(tw / 2, Math.min(w - tw / 2, best[0])) + "px";
+  }
+  host.addEventListener("pointermove", (e) => { hoverX = e.clientX - host.getBoundingClientRect().left; host.classList.add("hover"); hover(hoverX); });
+  host.addEventListener("pointerleave", () => { hoverX = null; host.classList.remove("hover"); });
+  new ResizeObserver(draw).observe(host);
+  return { set(d) { data = d; draw(); } };
+}
+
+/* ---------------- segmented control ---------------- */
+function Seg(host, value, onChange) {
+  const thumb = document.createElement("span"); thumb.className = "thumb"; host.prepend(thumb);
+  const btns = [...host.querySelectorAll("button")];
+  function place(animate) {
+    const b = btns.find(x => x.dataset.v === value) || btns[0];
+    if (!animate) thumb.style.transition = "none";
+    thumb.style.width = b.offsetWidth + "px";
+    thumb.style.transform = `translateX(${b.offsetLeft}px)`;
+    if (!animate) { thumb.offsetWidth; thumb.style.transition = ""; }
+    btns.forEach(x => x.setAttribute("aria-pressed", x === b));
+  }
+  btns.forEach(b => b.addEventListener("click", () => { if (value === b.dataset.v) return; value = b.dataset.v; place(true); onChange(value); }));
+  new ResizeObserver(() => place(false)).observe(host);
+  place(false);
+}
+
+/* ---------------- state ---------------- */
+let S = null, lastOk = 0, sel = store.get("node", null);
+let metric = store.get("metric", "cpu"), scope = store.get("scope", "node"), show = store.get("show", "running");
+let sortKey = store.get("sortKey", "cpu"), sortDir = store.get("sortDir", -1), query = "";
+
+const rings = { cpu: Ring($("ringCpu"), "CPU"), mem: Ring($("ringMem"), "used"), temp: Ring($("ringTemp"), "CPU") };
+const sparks = {
+  cpu: Spark($("sparkCpu"), { domain: [0, 1], fmt: v => pct(v, 1) }),
+  mem: Spark($("sparkMem"), { domain: [0, 1], fmt: v => pct(v, 1) }),
+  temp: Spark($("sparkTemp"), { domain: (d) => { const v = d.map(x => x[1]).filter(x => x != null); return [Math.min(20, ...v), Math.max(90, ...v)]; }, fmt: v => v.toFixed(1) + "°C" }),
+};
+Seg($("segMetric"), metric, v => { metric = v; store.set("metric", v); renderTop(true); });
+Seg($("segScope"), scope, v => { scope = v; store.set("scope", v); renderTop(true); });
+Seg($("segShow"), show, v => { show = v; store.set("show", v); renderTable(); });
+$("q").addEventListener("input", e => { query = e.target.value.trim().toLowerCase(); renderTable(); });
+addEventListener("scroll", () => $("top").classList.toggle("scrolled", scrollY > 4), { passive: true });
+
+/* ---------------- poll ---------------- */
+async function poll() {
+  try {
+    const r = await fetch("api/state", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const s = await r.json();
+    if (s.nodes) { S = s; lastOk = Date.now(); render(); }
+    const b = $("banner");
+    if (!s.ok && s.error) { b.className = "banner show"; b.textContent = "Collector error: " + s.error + (S ? " — showing the last good sample." : ""); }
+    else if (s.demo) { b.className = "banner show demo"; b.textContent = "Demo mode — this is generated data. Run without PVE_DASH_DEMO on a Proxmox node for the real thing."; }
+    else b.className = "banner";
+  } catch (e) {
+    const b = $("banner"); b.className = "banner show"; b.textContent = "Can't reach the dashboard agent (" + e.message + "). Retrying…";
+  }
+  liveTick();
+  setTimeout(poll, Math.max(1000, ((S && S.interval) || 3) * 1000));
+}
+function liveTick() {
+  const el = $("live"), t = $("liveText");
+  if (!lastOk) return;
+  const age = (Date.now() - lastOk) / 1000;
+  const interval = (S && S.interval) || 3;
+  el.className = "live" + (age > interval * 5 ? " down" : age > interval * 2.2 ? " stale" : "");
+  t.textContent = age > interval * 2.2 ? "Updated " + ago(age) : "Live";
+}
+setInterval(liveTick, 1000);
+
+/* ---------------- render ---------------- */
+function render() {
+  const nodes = S.nodes;
+  if (!sel || !nodes.find(n => n.name === sel)) sel = (nodes.find(n => n.local) || nodes[0] || {}).name;
+  $("foot").dataset.tail = ` ${S.version} · served by ${S.local} · sampling every ${S.interval}s`;
+  $("foot").textContent = (window.__brandName || "Proxmox Dashboard") + $("foot").dataset.tail;
+  renderNodes(); renderNode(); renderTop(false); renderStorage(); renderTable();
+}
+
+function renderNodes() {
+  const host = $("nodes"), names = S.nodes.map(n => n.name).join("|");
+  if (host.dataset.k !== names) {
+    host.dataset.k = names;
+    host.innerHTML = S.nodes.map(n => `<button class="node-card" data-n="${esc(n.name)}">
+      <div class="nc-head"><span class="dot"></span><span class="nc-name">${esc(n.name)}</span><span class="chip t"></span></div>
+      <div class="mini"><span>CPU</span><div class="bar"><span class="c"></span></div><b class="cv"></b></div>
+      <div class="mini"><span>RAM</span><div class="bar"><span class="m"></span></div><b class="mv"></b></div></button>`).join("");
+    host.querySelectorAll(".node-card").forEach(b => b.addEventListener("click", () => {
+      sel = b.dataset.n; store.set("node", sel); renderNodes(); renderNode(); renderTop(true);
+      if (scrollY > host.offsetTop) scrollTo({ top: host.offsetTop - 80, behavior: reduced ? "auto" : "smooth" });
+    }));
+  }
+  S.nodes.forEach(n => {
+    const b = host.querySelector(`[data-n="${CSS.escape(n.name)}"]`);
+    const mf = n.mem_total ? n.mem_used / n.mem_total : null;
+    b.setAttribute("aria-pressed", n.name === sel);
+    b.classList.toggle("offline", !n.online);
+    b.querySelector(".dot").className = "dot " + (n.online ? "on" : "off");
+    b.querySelector(".c").style.width = pct(n.online ? n.cpu_pct : 0, 1);
+    b.querySelector(".m").style.width = pct(n.online ? mf : 0, 1);
+    b.querySelector(".cv").textContent = n.online ? pct(n.cpu_pct) : "—";
+    b.querySelector(".mv").textContent = n.online ? pct(mf) : "—";
+    const st = tempStatus(n.cpu_temp, "cpu");
+    const chip = b.querySelector(".chip.t");
+    chip.innerHTML = !n.online ? "Offline" : n.cpu_temp != null ? `<span class="dot" style="background:var(--${st.k})"></span>${temp(n.cpu_temp)}` : (n.agent ? "No sensor" : "No agent");
+    b.setAttribute("aria-label", `${n.name}, ${n.online ? "online" : "offline"}, CPU ${pct(n.cpu_pct)}, memory ${pct(mf)}${n.cpu_temp != null ? ", " + temp(n.cpu_temp) + " " + st.label : ""}`);
+  });
+  $("nodesAside").textContent = S.nodes.length > 1 ? "Select a node to inspect it" : "";
+}
+
+function noAgent(n) {
+  return `<div class="empty"><b>No live agent on ${esc(n.name)}</b>Install the agent on this node to see ${n.online ? "temperatures, per-thread load, NICs and disks" : "its hardware — it's offline right now"}.</div>`;
+}
+
+function renderNode() {
+  const n = S.nodes.find(x => x.name === sel); if (!n) return;
+  const guests = S.guests.filter(g => g.node === n.name);
+  $("nodeTitle").textContent = n.name;
+  $("nodeAside").textContent = [n.ip, n.pve ? "PVE " + n.pve : null, n.kernel ? "kernel " + n.kernel : null, n.online ? "up " + uptime(n.uptime) : "offline"].filter(Boolean).join(" · ");
+  const hist = n.history || [];
+  const span = hist.length > 1 ? (hist[hist.length - 1][0] - hist[0][0]) : 0;
+  const cap = span >= 60 ? Math.round(span / 60) + " min ago" : span ? span + "s ago" : "collecting…";
+  ["capCpu", "capMem", "capTemp"].forEach(id => $(id).textContent = cap);
+
+  // CPU
+  rings.cpu.set(n.cpu_pct, n.cpu_pct == null ? null : n.cpu_pct * 100, v => v == null ? "—" : `${v.toFixed(0)}<small>%</small>`, null);
+  $("cpuChip").textContent = n.maxcpu ? `${n.maxcpu} threads` : "";
+  const load = n.load ? n.load.map(x => (+x).toFixed(2)).join("  ") : "—";
+  $("metaCpu").innerHTML = `<div class="model">${esc(shortModel(n.model) || "—")}</div>
+    <div class="row"><span>Clock</span><span>${n.mhz ? (n.mhz / 1000).toFixed(2) + " GHz" : "—"}${n.mhz_max ? ` <span style="color:var(--text-3)">/ ${(n.mhz_max / 1000).toFixed(1)}</span>` : ""}</span></div>
+    <div class="row"><span>Load avg</span><span>${load}</span></div>
+    <div class="row"><span>IO wait</span><span>${n.iowait == null ? "—" : pct(n.iowait, 1)}</span></div>`;
+  sparks.cpu.set(hist.map(h => [h[0], h[1]]));
+
+  // Memory
+  const mf = n.mem_total ? n.mem_used / n.mem_total : null;
+  rings.mem.set(mf, mf == null ? null : mf * 100, v => v == null ? "—" : `${v.toFixed(0)}<small>%</small>`, null);
+  $("memChip").textContent = n.mem_total ? bytes(n.mem_total, 0) : "";
+  const guestMem = guests.filter(g => g.status === "running").reduce((a, g) => a + g.mem, 0);
+  $("metaMem").innerHTML = `<div class="row"><span>Used</span><span>${bytes(n.mem_used)}</span></div>
+    ${n.arc ? `<div class="row"><span>ZFS ARC</span><span>${bytes(n.arc)}</span></div>` : ""}
+    <div class="row"><span>Guests</span><span>${bytes(guestMem)}</span></div>
+    <div class="row"><span>Swap</span><span>${n.swap_total ? bytes(n.swap_used) + " / " + bytes(n.swap_total, 0) : n.agent ? "none" : "—"}</span></div>
+    ${n.rootfs_total ? `<div class="row"><span>Root disk</span><span>${bytes(n.rootfs_used, 0)} / ${bytes(n.rootfs_total, 0)}</span></div>` : ""}`;
+  sparks.mem.set(hist.map(h => [h[0], h[2]]));
+
+  // Temperature
+  const st = tempStatus(n.cpu_temp, "cpu");
+  const temps = hist.map(h => h[3]).filter(v => v != null);
+  rings.temp.set(n.cpu_temp == null ? null : n.cpu_temp / 100, n.cpu_temp, v => v == null ? "—" : `${v.toFixed(0)}<small>°C</small>`, st ? `var(--${st.k})` : null);
+  $("tempStatus").innerHTML = statusHTML(st);
+  const hottest = (n.temps || []).filter(t => t.kind !== "cpu").sort((a, b) => b.value - a.value)[0];
+  $("metaTemp").innerHTML = n.agent ? `
+    <div class="row"><span>Peak</span><span>${temps.length ? temp(Math.max(...temps)) : "—"}</span></div>
+    <div class="row"><span>Average</span><span>${temps.length ? temp(temps.reduce((a, b) => a + b, 0) / temps.length) : "—"}</span></div>
+    <div class="row"><span>Hottest other</span><span>${hottest ? esc(sensorName(hottest)) + " " + temp(hottest.value) : "—"}</span></div>
+    ${n.fans && n.fans.length ? `<div class="row"><span>${esc(n.fans[0].label)}</span><span>${n.fans[0].rpm} RPM</span></div>` : ""}`
+    : `<div class="row"><span style="white-space:normal">Install the agent on this node to read its sensors.</span></div>`;
+  sparks.temp.set(hist.map(h => [h[0], h[3]]));
+
+  // Cores
+  const ch = $("cores");
+  if (!n.agent || !n.online) { ch.innerHTML = noAgent(n); ch._k = null; $("coresChip").textContent = ""; }
+  else if (!n.cores.length) { ch.innerHTML = `<div class="empty">Collecting first sample…</div>`; ch._k = null; }
+  else {
+    if (ch._k !== n.name + n.cores.length) {
+      ch._k = n.name + n.cores.length;
+      ch.innerHTML = `<div class="cores">${n.cores.map((_, i) => `<div class="core" role="img"><em></em></div>`).join("")}</div>
+        <div class="legend"><span>0%</span><span class="ramp"></span><span>100%</span><span style="margin-left:auto" id="coresBusy"></span></div>`;
+    }
+    const tiles = ch.querySelectorAll(".core");
+    n.cores.forEach((u, i) => {
+      const t = tiles[i];
+      t.style.background = `color-mix(in oklab, var(--s1) ${Math.round(8 + u * 92)}%, var(--fill-2))`;
+      const em = t.firstChild; em.textContent = Math.round(u * 100); em.style.color = u > .55 ? "#fff" : "";
+      t.setAttribute("aria-label", `Thread ${i}: ${Math.round(u * 100)}%`); t.title = `Thread ${i} · ${Math.round(u * 100)}%`;
+    });
+    const busy = n.cores.filter(u => u > .8).length;
+    $("coresBusy").textContent = busy ? `${busy} thread${busy > 1 ? "s" : ""} above 80%` : "No threads pegged";
+    $("coresChip").textContent = `${n.cores.length} threads`;
+  }
+
+  // Sensors
+  const sh = $("sensors");
+  if (!n.agent || !n.online) { sh.innerHTML = noAgent(n); $("sensChip").textContent = ""; }
+  else if (!n.temps.length && !n.fans.length) sh.innerHTML = `<div class="empty"><b>No hardware sensors found</b>Try <code>modprobe coretemp</code> (Intel) or <code>modprobe k10temp</code> (AMD), and <code>modprobe drivetemp</code> for SATA drives.</div>`;
+  else {
+    const groups = [["cpu", "Processor"], ["nvme", "NVMe"], ["drive", "Drives"], ["gpu", "Graphics"], ["nic", "Network"], ["board", "Board"]];
+    let html = "";
+    for (const [k, label] of groups) {
+      let list = n.temps.filter(t => t.kind === k);
+      if (!list.length) continue;
+      // collapse many "Core N" readings into the hottest few
+      if (k === "cpu" && list.length > 6) { const head = list.filter(t => !/^Core \d+/.test(t.label)); const cores = list.filter(t => /^Core \d+/.test(t.label)).sort((a, b) => b.value - a.value); list = [...head, ...cores.slice(0, 4)]; }
+      html += `<div class="group-label">${label}</div><div class="list">` + list.map(t => {
+        const s = tempStatus(t.value, t.kind, t.crit);
+        return `<div class="lrow"><div class="nm"><b>${esc(sensorName(t))}</b>${t.model ? `<small>${esc(t.model)}</small>` : ""}</div>
+          <span class="v temp-v">${temp(t.value)} ${statusHTML(s)}</span></div>`;
+      }).join("") + `</div>`;
+    }
+    if (n.fans.length) html += `<div class="group-label">Fans</div><div class="list">` + n.fans.map(f => `<div class="lrow"><div class="nm"><b>${esc(f.label)}</b><small>${esc(f.chip)}</small></div><span class="v">${f.rpm ? f.rpm + " RPM" : "Stopped"}</span></div>`).join("") + `</div>`;
+    sh.innerHTML = html;
+    $("sensChip").textContent = `${n.temps.length} reading${n.temps.length === 1 ? "" : "s"}`;
+  }
+
+  // NICs
+  const nh = $("nics");
+  if (!n.agent || !n.online) nh.innerHTML = noAgent(n);
+  else if (!n.nics.length) nh.innerHTML = `<div class="empty">Collecting first sample…</div>`;
+  else nh.innerHTML = `<div class="list">` + n.nics.map(x => {
+    const cap = x.speed ? x.speed * 1e6 / 8 : Math.max(...n.nics.map(y => Math.max(y.rx, y.tx)), 1);
+    return `<div class="lrow"><div class="nm"><b>${esc(x.name)}</b><small>${x.up ? (x.speed ? (x.speed >= 1000 ? x.speed / 1000 + " Gb/s link" : x.speed + " Mb/s link") : "up") : "down"}</small></div>
+      <span class="v io"><i>${bits(x.rx)}</i><i class="o">${bits(x.tx)}</i></span>
+      <div class="dual"><div class="bar"><span style="width:${Math.min(100, x.rx / cap * 100).toFixed(1)}%"></span></div><div class="bar o"><span style="width:${Math.min(100, x.tx / cap * 100).toFixed(1)}%"></span></div></div></div>`;
+  }).join("") + `</div>`;
+
+  // Disks
+  const dh = $("disks");
+  if (!n.agent || !n.online) dh.innerHTML = noAgent(n);
+  else if (!n.disks.length) dh.innerHTML = `<div class="empty">Collecting first sample…</div>`;
+  else dh.innerHTML = `<div class="list">` + n.disks.map(x => `<div class="lrow"><div class="nm"><b>${esc(x.name)} <span style="color:var(--text-3);font-weight:400">${x.size ? bytes(x.size, 0) : ""} ${x.ssd ? "SSD" : "HDD"}</span></b><small>${esc(x.model || "—")} · ${pct(x.util)} busy</small></div>
+      <span class="v io"><i>${rate(x.r)}</i><i class="o">${rate(x.w)}</i></span>
+      <div class="dual"><div class="bar"><span style="width:${(x.util * 100).toFixed(1)}%"></span></div></div></div>`).join("") + `</div>`;
+}
+function sensorName(t) {
+  if (t.kind === "nvme" && t.label === "Composite") return "Composite";
+  if (t.label === t.chip) return t.kind === "drive" ? "Drive" : t.chip;
+  return t.label;
+}
+
+/* ---------------- top guests (keyed + FLIP reorder) ---------------- */
+const METRICS = {
+  cpu:  { key: g => g.cores_used, val: g => `${g.cores_used.toFixed(2)} cores`, sub: g => `${pct(g.cpu)} of ${g.maxcpu} vCPU`, cap: (g, n) => n && n.maxcpu, label: "CPU" },
+  mem:  { key: g => g.mem, val: g => bytes(g.mem), sub: g => `of ${bytes(g.maxmem, 0)}`, cap: (g, n) => n && n.mem_total, label: "memory" },
+  net:  { key: g => g.net_in + g.net_out, val: g => rate(g.net_in + g.net_out), sub: g => `↓ ${rate(g.net_in)} ↑ ${rate(g.net_out)}`, cap: null, label: "network" },
+  disk: { key: g => g.disk_r + g.disk_w, val: g => rate(g.disk_r + g.disk_w), sub: g => `R ${rate(g.disk_r)} W ${rate(g.disk_w)}`, cap: null, label: "disk I/O" },
+};
+function renderTop(changed) {
+  if (!S) return;
+  const M = METRICS[metric], host = $("topList");
+  let list = S.guests.filter(g => g.status === "running" && (scope === "all" || g.node === sel));
+  list.sort((a, b) => M.key(b) - M.key(a));
+  list = list.slice(0, 8);
+  const maxv = Math.max(...list.map(M.key), 1e-9);
+  $("topAside").textContent = `Ranked by ${M.label}${scope === "node" ? " on " + sel : " across the cluster"}`;
+  if (!list.length) { host.innerHTML = `<div class="empty"><b>No running guests</b>${scope === "node" ? "Nothing is running on " + esc(sel) + "." : ""}</div>`; return; }
+
+  // FLIP: record old positions
+  const old = new Map();
+  host.querySelectorAll(".trow").forEach(r => old.set(r.dataset.id, r.getBoundingClientRect().top));
+  const existing = new Map([...host.querySelectorAll(".trow")].map(r => [r.dataset.id, r]));
+  if (!host.querySelector(".trow")) host.innerHTML = "";
+  host.querySelectorAll(".empty").forEach(e => e.remove());
+  const frag = [];
+  list.forEach((g, i) => {
+    const id = String(g.vmid);
+    let r = existing.get(id);
+    if (!r) {
+      r = document.createElement("div"); r.className = "trow"; r.dataset.id = id;
+      r.innerHTML = `<span class="rank"></span><div class="who"><b><span class="badge"></span><span class="gn"></span></b><small></small><div class="bar"><span></span></div></div><div class="num"><span class="nv"></span><small></small></div><div class="mspark"><svg preserveAspectRatio="none" viewBox="0 0 100 30"><path vector-effect="non-scaling-stroke"/></svg></div>`;
+    }
+    existing.delete(id);
+    const node = S.nodes.find(n => n.name === g.node);
+    const cap = M.cap ? M.cap(g, node) : maxv;
+    r.querySelector(".rank").textContent = i + 1;
+    const badge = r.querySelector(".badge"); badge.textContent = g.type === "qemu" ? "VM" : "CT"; badge.className = "badge" + (g.type === "qemu" ? " vm" : "");
+    r.querySelector(".gn").textContent = g.name;
+    r.querySelector(".who small").textContent = `#${g.vmid}${scope === "all" ? " · " + g.node : ""} · ${M.sub(g)}`;
+    r.querySelector(".bar > span").style.width = Math.min(100, M.key(g) / (cap || maxv) * 100).toFixed(1) + "%";
+    r.querySelector(".nv").textContent = M.val(g);
+    r.querySelector(".num small").textContent = M.cap ? pct(M.key(g) / cap, 0) + " of host" : "";
+    // CPU history sparkline (cores used)
+    const h = g.hist || [], hm = Math.max(g.maxcpu || 1, ...h);
+    r.querySelector(".mspark path").setAttribute("d", h.length > 1 ? h.map((v, j) => `${j ? "L" : "M"}${(j / (h.length - 1) * 100).toFixed(2)} ${(28 - v / hm * 26).toFixed(2)}`).join("") : "");
+    r.querySelector(".mspark").title = "CPU, last 3 min";
+    frag.push(r);
+  });
+  existing.forEach(r => r.remove());
+  frag.forEach(r => host.appendChild(r));
+  if (reduced || changed) return;
+  frag.forEach(r => {
+    const o = old.get(r.dataset.id); if (o == null) return;
+    const dy = o - r.getBoundingClientRect().top; if (!dy) return;
+    r.style.transition = "none"; r.style.transform = `translateY(${dy}px)`;
+    requestAnimationFrame(() => { r.style.transition = "transform .5s var(--spring)"; r.style.transform = ""; });
+  });
+}
+
+/* ---------------- storage ---------------- */
+function renderStorage() {
+  const list = S.storage.filter(s => s.shared || s.node === sel);
+  $("storeChip").textContent = list.length ? `${list.length} on ${sel}` : "";
+  $("storage").innerHTML = list.length ? `<div class="list">` + list.map(s => {
+    const f = s.total ? s.used / s.total : 0;
+    const st = f >= .95 ? "critical" : f >= .85 ? "serious" : f >= .75 ? "warning" : null;
+    return `<div class="lrow"><div class="nm"><b>${esc(s.id)}</b><small>${esc(s.type || "")}${s.shared ? " · shared" : ""}${s.status && s.status !== "available" ? " · " + esc(s.status) : ""}</small></div>
+      <span class="v">${bytes(s.used, 1)} <span style="color:var(--text-3);font-weight:400">/ ${bytes(s.total, 1)}</span>${st ? " " + statusHTML({ k: st, label: pct(f) }) : ""}</span>
+      <div class="bar"><span style="width:${(f * 100).toFixed(1)}%${st ? `;background:var(--${st})` : ""}"></span></div></div>`;
+  }).join("") + `</div>` : `<div class="empty">No storage reported for ${esc(sel)}.</div>`;
+}
+
+/* ---------------- guest table ---------------- */
+const COLS = [
+  ["status", "", g => g.status === "running" ? 1 : 0],
+  ["vmid", "ID", g => g.vmid],
+  ["name", "Name", g => g.name.toLowerCase()],
+  ["type", "Type", g => g.type],
+  ["node", "Node", g => g.node],
+  ["cpu", "CPU", g => g.cores_used, "r"],
+  ["mem", "Memory", g => g.mem, "r"],
+  ["net", "Network", g => g.net_in + g.net_out, "r"],
+  ["disk", "Disk I/O", g => g.disk_r + g.disk_w, "r"],
+  ["uptime", "Uptime", g => g.uptime, "r"],
+];
+function renderHead() {
+  $("thead").innerHTML = COLS.map(([k, label, , cls]) => `<th class="${cls || ""}" ${sortKey === k ? `aria-sort="${sortDir < 0 ? "descending" : "ascending"}"` : ""}>${label ? `<button data-k="${k}">${label}</button>` : `<span class="sr">Status</span>`}</th>`).join("");
+  $("thead").querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+    const k = b.dataset.k;
+    if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = ["name", "node", "type", "vmid"].includes(k) ? 1 : -1; }
+    store.set("sortKey", sortKey); store.set("sortDir", sortDir); renderHead(); renderTable();
+  }));
+}
+function renderTable() {
+  if (!S) return;
+  const col = COLS.find(c => c[0] === sortKey) || COLS[5];
+  let list = S.guests.filter(g => (show === "all" || g.status === "running") && (!query || `${g.vmid} ${g.name} ${g.node} ${g.tags || ""}`.toLowerCase().includes(query)));
+  list.sort((a, b) => { const x = col[2](a), y = col[2](b); return (x > y ? 1 : x < y ? -1 : a.vmid - b.vmid) * sortDir; });
+  $("tbody").innerHTML = list.length ? list.map(g => {
+    const on = g.status === "running";
+    const node = S.nodes.find(n => n.name === g.node);
+    const mf = g.maxmem ? g.mem / g.maxmem : 0;
+    return `<tr class="${on ? "" : "stopped"}">
+      <td><span class="dot ${on ? "on" : ""}" title="${esc(g.status)}"></span></td>
+      <td>${g.vmid}</td>
+      <td class="name" title="${esc(g.name)}">${esc(g.name)}</td>
+      <td><span class="badge ${g.type === "qemu" ? "vm" : ""}">${g.type === "qemu" ? "VM" : "CT"}</span></td>
+      <td>${esc(g.node)}</td>
+      <td class="r">${on ? `<span class="cellbar">${pct(g.cpu)}<span class="bar"><span style="width:${(g.cpu * 100).toFixed(1)}%"></span></span></span><div class="sub">${g.cores_used.toFixed(2)} of ${g.maxcpu} vCPU</div>` : "—"}</td>
+      <td class="r">${on ? `<span class="cellbar">${bytes(g.mem)}<span class="bar"><span style="width:${(mf * 100).toFixed(1)}%"></span></span></span><div class="sub">of ${bytes(g.maxmem, 0)}</div>` : "—"}</td>
+      <td class="r">${on ? `↓ ${rate(g.net_in)}<div class="sub">↑ ${rate(g.net_out)}</div>` : "—"}</td>
+      <td class="r">${on ? `R ${rate(g.disk_r)}<div class="sub">W ${rate(g.disk_w)}</div>` : "—"}</td>
+      <td class="r">${on ? uptime(g.uptime) : esc(g.status)}</td></tr>`;
+  }).join("") : `<tr><td colspan="${COLS.length}"><div class="empty">${query ? "No guests match “" + esc(query) + "”." : "No guests."}</div></td></tr>`;
+}
+
+window.__Seg = Seg;
+renderHead();
+poll();
+})();
+</script>
+<script>
+/* ================= settings: routing, Pushover destinations, alert rules ================= */
+(() => {
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const Seg = window.__Seg;
+
+/* ---------- icons (SF-Symbols-ish, 24px stroke) ---------- */
+const P = {
+  thermo: '<path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0z"/><path d="M12 9v7"/>',
+  drive: '<rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M7 14h.01M11 14h6"/>',
+  fan: '<circle cx="12" cy="12" r="2"/><path d="M12 10c0-4 1-7 4-7s2 4-2 7M14 12c4 0 7 1 7 4s-4 2-7-2M12 14c0 4-1 7-4 7s-2-4 2-7M10 12c-4 0-7-1-7-4s4-2 7 2"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  heart: '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+  stack: '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
+  disk: '<path d="M4 15V7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v8"/><rect x="3" y="15" width="18" height="5" rx="2"/>',
+  mem: '<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 7V4M11 7V4M15 7V4M19 7V4M7 17v3M17 17v3"/>',
+  swap: '<path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>',
+  cpu: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  hog: '<circle cx="12" cy="12" r="9"/><path d="M12 12V3a9 9 0 0 1 8 5z" fill="currentColor"/>',
+  hourglass: '<path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9"/>',
+  server: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
+  people: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M15 14.5c3 0 6 1.8 6 5"/>',
+  stop: '<rect x="5" y="5" width="14" height="14" rx="3"/>',
+  restart: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+  plug: '<path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5"/>',
+  archive: '<rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/>',
+  shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="M12 8v5M12 16h.01"/>',
+  arrow: '<path d="M12 4v12M6 10l6 6 6-6M5 20h14"/>',
+  cert: '<circle cx="12" cy="9" r="5"/><path d="m9 13-2 8 5-3 5 3-2-8"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+};
+const icon = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[k]}</svg>`;
+const C = { red: "#ff3b30", orange: "#ff9500", yellow: "#f5a700", green: "#34c759", teal: "#30b0c7", blue: "#007aff", indigo: "#5856d6", purple: "#af52de", pink: "#ff2d55", gray: "#8e8e93" };
+
+/* ---------- rule catalogue ---------- */
+const n = (k, label, unit, def, min, max, step = 1) => ({ k, label, unit, def, min, max, step });
+const GROUPS = [
+  ["Hardware", [
+    { id: "cpu_temp", t: "CPU temperature", d: "Package or Tctl reading on any node", i: "thermo", c: C.red, on: true, pr: 0, p: [n("warn", "Warn at", "°C", 80, 40, 110), n("crit", "Critical at", "°C", 90, 40, 115)] },
+    { id: "disk_temp", t: "Drive & NVMe temperature", d: "Any NVMe, SATA or SAS drive sensor", i: "drive", c: C.orange, on: true, pr: 0, p: [n("warn", "Warn at", "°C", 55, 30, 90), n("crit", "Critical at", "°C", 65, 30, 95)] },
+    { id: "fan", t: "Fan stopped", d: "A fan that was spinning now reads 0 RPM", i: "fan", c: C.teal, on: true, pr: 1, p: [n("for", "For", "sec", 30, 5, 600, 5)] },
+    { id: "nic", t: "Network link down or degraded", d: "A physical NIC drops, or links below its usual speed", i: "link", c: C.blue, on: true, pr: 0, p: [] },
+    { id: "smart", t: "SMART health warning", d: "A drive fails its SMART check or reallocated sectors grow", i: "heart", c: C.pink, on: true, pr: 1, p: [] },
+  ]],
+  ["Capacity", [
+    { id: "storage", t: "Storage pool usage", d: "Any Proxmox storage, shared or local", i: "stack", c: C.indigo, on: true, pr: 0, p: [n("warn", "Warn at", "%", 85, 50, 99), n("crit", "Critical at", "%", 95, 50, 100)] },
+    { id: "rootfs", t: "Node root disk usage", d: "The / filesystem on each node", i: "disk", c: C.purple, on: true, pr: 0, p: [n("warn", "Warn at", "%", 90, 50, 99)] },
+    { id: "memory", t: "Memory pressure", d: "Node RAM stays high (ZFS ARC excluded)", i: "mem", c: C.green, on: false, pr: 0, p: [n("pct", "Above", "%", 92, 50, 99), n("for", "for", "min", 5, 1, 60)] },
+    { id: "swap", t: "Swap in use", d: "A node starts leaning on swap", i: "swap", c: C.gray, on: false, pr: -1, p: [n("pct", "Above", "%", 50, 5, 100, 5)] },
+  ]],
+  ["Load", [
+    { id: "cpu_sustained", t: "Sustained high CPU", d: "Whole-node CPU stays pinned", i: "cpu", c: C.blue, on: false, pr: 0, p: [n("pct", "Above", "%", 90, 50, 100), n("for", "for", "min", 10, 1, 120)] },
+    { id: "guest_hog", t: "Guest hogging the host", d: "One VM or container eats most of its node's CPU", i: "hog", c: C.orange, on: true, pr: 0, p: [n("pct", "Above", "% of host", 75, 20, 100, 5), n("for", "for", "min", 10, 1, 120)] },
+    { id: "iowait", t: "High IO wait", d: "CPUs stuck waiting on disks, usually a struggling drive", i: "hourglass", c: C.yellow, on: false, pr: 0, p: [n("pct", "Above", "%", 20, 5, 90), n("for", "for", "min", 5, 1, 60)] },
+  ]],
+  ["Availability", [
+    { id: "node_down", t: "Node offline", d: "Also tells you when it's back", i: "server", c: C.red, on: true, pr: 1, p: [n("for", "After", "sec", 60, 15, 900, 15)] },
+    { id: "quorum", t: "Cluster quorum lost", d: "Guests can't start or migrate until it's back", i: "people", c: C.pink, on: true, pr: 1, p: [] },
+    { id: "guest_down", t: "Guest stopped unexpectedly", d: "Was running, stopped without a stop or shutdown task", i: "stop", c: C.indigo, on: true, pr: 0, p: [] },
+    { id: "guest_restart", t: "Guest crashed or rebooted", d: "Uptime reset without Proxmox stopping it", i: "restart", c: C.purple, on: false, pr: 0, p: [] },
+    { id: "agent", t: "Dashboard agent unreachable", d: "A node is up but its temps can't be watched", i: "plug", c: C.gray, on: true, pr: -1, p: [n("for", "After", "min", 3, 1, 60)] },
+  ]],
+  ["Proxmox", [
+    { id: "backup", t: "Backup job failed", d: "Any vzdump task finishes with an error", i: "archive", c: C.teal, on: true, pr: 1, p: [] },
+    { id: "zfs", t: "ZFS pool degraded", d: "A pool isn't ONLINE, or a scrub finds errors", i: "shield", c: C.red, on: true, pr: 1, p: [] },
+    { id: "updates", t: "Updates available", d: "Checked daily, with a package count per node", i: "arrow", c: C.green, on: false, pr: -1, p: [] },
+    { id: "cert", t: "Certificate expiring", d: "The node's web UI certificate is close to expiry", i: "cert", c: C.yellow, on: false, pr: 0, p: [n("days", "Within", "days", 14, 1, 60)] },
+  ]],
+  ["Summary", [
+    { id: "digest", t: "Daily summary", d: "Peak temps, busiest guests and storage headroom", i: "sun", c: C.orange, on: false, pr: -1, p: [{ k: "at", label: "Send at", type: "time", def: "08:00" }] },
+  ]],
+];
+const RULES = GROUPS.flatMap(g => g[1]);
+const PRI = [["-1", "Low"], ["0", "Normal"], ["1", "High"], ["2", "Emergency"]];
+const SOUNDS = ["", "pushover", "bike", "bugle", "cashregister", "classical", "cosmic", "falling", "gamelan", "incoming", "intermission", "magic", "mechanical", "pianobar", "siren", "spacealarm", "tugboat", "alien", "climb", "persistent", "echo", "updown", "vibrate", "none"];
+const SWATCH = [C.blue, C.indigo, C.purple, C.pink, C.red, C.orange, C.green, C.teal, C.gray];
+
+/* ---------- auth: password sheet + 401-aware fetch ---------- */
+let pwWaiters = null;
+function askPassword(msg) {
+  return new Promise((resolve, reject) => {
+    if (pwWaiters) { pwWaiters.push({ resolve, reject }); return; }
+    pwWaiters = [{ resolve, reject }];
+    const sh = $("pwSheet"), sc = $("pwScrim"), inp = $("inPw"), last = document.activeElement;
+    inp.value = ""; $("fPw").classList.toggle("bad", !!msg); $("pwErr").textContent = msg || "";
+    sh.hidden = false; sc.hidden = false;
+    requestAnimationFrame(() => requestAnimationFrame(() => { sh.classList.add("open"); sc.classList.add("open"); }));
+    setTimeout(() => inp.focus(), reduced ? 0 : 200);
+    const finish = (ok, err) => {
+      sh.classList.remove("open"); sc.classList.remove("open");
+      setTimeout(() => { sh.hidden = true; sc.hidden = true; }, reduced ? 0 : 420);
+      const w = pwWaiters; pwWaiters = null;
+      cleanup(); if (last && last.focus) last.focus();
+      w.forEach(x => ok ? x.resolve() : x.reject(err));
+    };
+    const submit = async () => {
+      const pw = inp.value; if (!pw) return;
+      const b = $("pwSave"); b.disabled = true; b.textContent = "Checking…";
+      try {
+        const r = await fetch("api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pw }) });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok) return finish(true);
+        $("fPw").classList.add("bad"); $("pwErr").textContent = j.error || "Couldn't sign in"; inp.select();
+      } catch (e) { $("fPw").classList.add("bad"); $("pwErr").textContent = e.message; }
+      b.disabled = false; b.textContent = "Unlock";
+    };
+    const onKey = (e) => { if (e.key === "Enter") submit(); else if (e.key === "Escape") finish(false, new Error("Password required")); };
+    const cancel = () => finish(false, new Error("Password required"));
+    $("pwSave").onclick = submit; $("pwCancel").onclick = cancel; sc.onclick = cancel; inp.addEventListener("keydown", onKey);
+    function cleanup() { inp.removeEventListener("keydown", onKey); const b = $("pwSave"); b.disabled = false; b.textContent = "Unlock"; }
+  });
+}
+async function afetch(url, opt) {
+  let r = await fetch(url, opt);
+  if (r.status === 401) {
+    const j = await r.clone().json().catch(() => ({}));
+    await askPassword(j.setup ? j.error : "");
+    r = await fetch(url, opt);
+  }
+  return r;
+}
+
+/* ---------- model ---------- */
+let cfg = null, saveTimer = null;
+function defaults() {
+  const rules = {};
+  RULES.forEach(r => { rules[r.id] = { enabled: r.on, priority: r.pr, to: null }; r.p.forEach(p => rules[r.id][p.k] = p.def); });
+  return { branding: { name: DEFAULT_NAME, show_name: true, logo_url: null }, destinations: [], rules, delivery: { quiet: { enabled: false, from: "22:00", to: "07:00", allow_high: true }, repeat: 60, resolved: true } };
+}
+function merge(c) {
+  const d = defaults();
+  c = c || {};
+  d.destinations = c.destinations || [];
+  d.branding = { ...d.branding, ...(c.branding || {}) };
+  for (const id in d.rules) d.rules[id] = { ...d.rules[id], ...((c.rules || {})[id] || {}) };
+  d.delivery = { ...d.delivery, ...(c.delivery || {}), quiet: { ...d.delivery.quiet, ...((c.delivery || {}).quiet || {}) } };
+  d.sender = c.sender; d.capabilities = c.capabilities || {};
+  return d;
+}
+async function load() {
+  try {
+    const r = await afetch("api/settings", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    cfg = merge(await r.json());
+  } catch (e) { cfg = null; toast("Couldn't load settings: " + e.message); location.hash = ""; return; }
+  render();
+}
+function save(extra) {
+  $("saveState").className = "save-state"; $("saveState").textContent = "Saving…";
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      const body = JSON.stringify({ ...cfg, ...(extra || {}) });
+      const r = await afetch("api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const back = await r.json();
+      if (back && back.destinations) cfg.destinations = back.destinations; // server returns masked tokens + ids
+      $("saveState").className = "save-state ok"; $("saveState").textContent = "Saved";
+      if (extra) renderDest();
+    } catch (e) { $("saveState").className = "save-state"; $("saveState").textContent = "Not saved — " + e.message; }
+  }, extra ? 0 : 350);
+}
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+
+/* ---------- branding: name + logo ---------- */
+const DEFAULT_NAME = "Proxmox Dashboard";
+const DEFAULT_ICON = document.querySelector('link[rel="icon"]').href;
+function applyBrand(b) {
+  b = b || {};
+  const name = (b.name || "").trim() || DEFAULT_NAME;
+  window.__brandName = name;
+  $("title").textContent = name;
+  document.title = name;
+  const img = $("brandLogo");
+  if (b.logo_url) { img.src = b.logo_url; img.alt = name; img.hidden = false; $("brandMark").style.display = "none"; }
+  else { img.hidden = true; img.removeAttribute("src"); $("brandMark").style.display = ""; }
+  document.querySelector(".brand").classList.toggle("logo-only", !!b.logo_url && b.show_name === false);
+  document.querySelector('link[rel="icon"]').href = b.logo_url || DEFAULT_ICON;
+  const foot = $("foot"); foot.textContent = name + (foot.dataset.tail || "");
+}
+fetch("api/branding", { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(b => b && applyBrand(b)).catch(() => {});
+
+const LOGO_TYPES = ["image/png", "image/svg+xml", "image/webp", "image/jpeg"];
+function renderBrand() {
+  const b = cfg.branding;
+  const markSVG = $("brandMark").outerHTML.replace('id="brandMark"', "").replace('style="display: none;"', "");
+  $("brandGroup").innerHTML = `
+    <div class="cell"><div class="txt" style="flex:none"><b>Name</b></div>
+      <input class="inline-in" id="brandName" maxlength="40" value="${esc(b.name)}" placeholder="${esc(DEFAULT_NAME)}" aria-label="Dashboard name" autocomplete="off"></div>
+    <div class="cell" id="logoCell">
+      <div class="logo-prev">${b.logo_url ? `<img src="${esc(b.logo_url)}" alt="Current logo">` : markSVG}</div>
+      <div class="txt"><b>Logo</b><small>${b.logo_url ? esc(b.logo_name || "Custom logo") : "Default icon · drop an image here or upload"}</small></div>
+      ${b.logo_url ? `<button class="mini-btn danger" id="logoRemove">Remove</button>` : ""}
+      <button class="mini-btn" id="logoPick">${b.logo_url ? "Replace" : "Upload"}</button>
+      <input type="file" id="logoFile" accept="${LOGO_TYPES.join(",")}" hidden>
+    </div>
+    ${b.logo_url ? `<div class="cell"><div class="txt"><b>Show name next to logo</b><small>Turn off if your logo already includes the name</small></div>
+      <label class="switch"><input type="checkbox" id="brandShow" ${b.show_name !== false ? "checked" : ""} aria-label="Show name next to logo"><span></span></label></div>` : ""}`;
+  $("brandName").addEventListener("input", e => { b.name = e.target.value; applyBrand(b); save(); });
+  $("logoPick").addEventListener("click", () => $("logoFile").click());
+  $("logoFile").addEventListener("change", e => e.target.files[0] && uploadLogo(e.target.files[0]));
+  if ($("logoRemove")) $("logoRemove").addEventListener("click", removeLogo);
+  if ($("brandShow")) $("brandShow").addEventListener("change", e => { b.show_name = e.target.checked; applyBrand(b); save(); });
+  const cell = $("logoCell");
+  cell.addEventListener("dragover", e => { e.preventDefault(); cell.classList.add("drop"); });
+  cell.addEventListener("dragleave", () => cell.classList.remove("drop"));
+  cell.addEventListener("drop", e => { e.preventDefault(); cell.classList.remove("drop"); const f = e.dataTransfer.files[0]; if (f) uploadLogo(f); });
+}
+async function uploadLogo(file) {
+  if (!LOGO_TYPES.includes(file.type)) return toast("Use a PNG, SVG, WebP or JPEG image.");
+  if (file.size > 1024 * 1024) return toast("That image is over 1 MB. Try a smaller export.");
+  $("saveState").className = "save-state"; $("saveState").textContent = "Uploading…";
+  try {
+    const r = await afetch("api/settings/logo", { method: "PUT", headers: { "Content-Type": file.type, "X-Filename": encodeURIComponent(file.name) }, body: file });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const out = await r.json();
+    Object.assign(cfg.branding, { logo_url: out.logo_url, logo_name: file.name });
+    applyBrand(cfg.branding); renderBrand();
+    $("saveState").className = "save-state ok"; $("saveState").textContent = "Saved";
+    toast("Logo updated");
+  } catch (e) { $("saveState").textContent = "Upload failed — " + e.message; }
+}
+async function removeLogo() {
+  try {
+    const r = await afetch("api/settings/logo", { method: "DELETE" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    Object.assign(cfg.branding, { logo_url: null, logo_name: null, show_name: true });
+    applyBrand(cfg.branding); renderBrand(); toast("Logo removed");
+  } catch (e) { toast("Couldn't remove logo: " + e.message); }
+}
+/* ---------- render ---------- */
+function render() { renderBrand(); renderDest(); renderRules(); renderDelivery(); }
+
+function renderDest() {
+  const list = cfg.destinations;
+  $("destCount").textContent = list.length ? `${list.filter(d => d.enabled).length} of ${list.length} on` : "";
+  $("destList").innerHTML = list.map((d, i) => `
+    <div class="cell">
+      <div class="avatar" style="background:${esc(d.color || SWATCH[i % SWATCH.length])}">${esc((d.label || "?").trim()[0] || "?").toUpperCase()}</div>
+      <div class="txt tapzone" style="cursor:pointer" data-edit="${esc(d.id)}" tabindex="0" role="button" aria-label="Edit ${esc(d.label)}"><b>${esc(d.label)}</b>
+        <small>User ${esc(d.user_hint || "—")} · App ${esc(d.token_hint || "—")}${d.device ? " · " + esc(d.device) : " · all devices"}</small></div>
+      <label class="switch" title="${d.enabled ? "On" : "Off"}"><input type="checkbox" data-en="${esc(d.id)}" ${d.enabled ? "checked" : ""} aria-label="Send to ${esc(d.label)}"><span></span></label>
+      <span class="chev" data-edit="${esc(d.id)}" style="cursor:pointer" aria-hidden="true"></span>
+    </div>`).join("") + `
+    <div class="cell tap add" id="addDest" tabindex="0" role="button"><div class="avatar">+</div><div class="txt"><b>Add Pushover destination</b>${list.length ? "" : "<small>You'll need an app token and a user or group key</small>"}</div></div>`;
+  $("destList").querySelectorAll("[data-edit]").forEach(el => {
+    el.addEventListener("click", () => openSheet(el.dataset.edit));
+    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openSheet(el.dataset.edit); } });
+  });
+  $("destList").querySelectorAll("[data-en]").forEach(el => el.addEventListener("change", () => {
+    cfg.destinations.find(d => d.id === el.dataset.en).enabled = el.checked; save(); renderDest(); renderRules();
+  }));
+  const add = $("addDest");
+  add.addEventListener("click", () => openSheet(null));
+  add.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openSheet(null); } });
+}
+
+function stepper(r, p, val) {
+  if (p.type === "time") return `<label class="param">${p.label} <input type="time" class="timein" data-r="${r.id}" data-k="${p.k}" value="${esc(val)}"></label>`;
+  return `<span class="param">${p.label}
+    <span class="stepper"><button data-step="-1" data-r="${r.id}" data-k="${p.k}" aria-label="Decrease ${p.label}">−</button><input inputmode="numeric" data-r="${r.id}" data-k="${p.k}" value="${val}" aria-label="${r.t} ${p.label} (${p.unit})"><em>${p.unit}</em><button data-step="1" data-r="${r.id}" data-k="${p.k}" aria-label="Increase ${p.label}">+</button></span></span>`;
+}
+function renderRules() {
+  const dests = cfg.destinations;
+  $("ruleGroups").innerHTML = GROUPS.map(([g, rules]) => `
+    <div class="g-title"><span>${g}</span><span>${rules.filter(r => cfg.rules[r.id].enabled).length} on</span></div>
+    <div class="group">${rules.map(r => {
+      const s = cfg.rules[r.id];
+      const to = s.to;
+      const nowhere = dests.length && to && !to.some(id => dests.find(d => d.id === id && d.enabled));
+      return `<div class="rule ${s.enabled ? "on" : ""}" data-rule="${r.id}">
+        <div class="cell"><div class="ico" style="background:${r.c}">${icon(r.i)}</div>
+          <div class="txt"><b>${r.t}</b><small>${r.d}</small></div>
+          <label class="switch"><input type="checkbox" data-toggle="${r.id}" ${s.enabled ? "checked" : ""} aria-label="${r.t}"><span></span></label></div>
+        <div class="rule-body"><div><div class="rule-inner">
+          ${r.p.length ? `<div class="params">${r.p.map(p => stepper(r, p, s[p.k])).join("")}</div>` : ""}
+          <div class="sendto">Priority
+            <div class="seg sm" data-pri="${r.id}">${PRI.map(([v, l]) => `<button data-v="${v}">${l}</button>`).join("")}</div></div>
+          <div class="sendto">Send to
+            ${dests.length ? `<button class="pill" data-all="${r.id}" aria-pressed="${!to}">All</button>` + dests.map(d => `<button class="pill" data-to="${r.id}" data-d="${esc(d.id)}" aria-pressed="${!!to && to.includes(d.id)}" ${d.enabled ? "" : "disabled title='Destination is off'"}>${esc(d.label)}</button>`).join("") : `<span>Add a Pushover destination first.</span>`}
+          </div>
+          ${r.id === "smart" && cfg.capabilities && cfg.capabilities.smartctl === false ? `<div class="warnline">smartctl isn't installed on the node, so SMART checks are skipped. Install it with <code>apt install smartmontools</code>.</div>` : ""}
+          ${nowhere ? `<div class="warnline">Every destination picked for this alert is switched off, so it won't be delivered.</div>` : ""}
+          ${r.p.some(p => p.k === "crit") ? `<div class="g-foot" style="margin:0">Crossing the critical level sends one priority step higher.</div>` : ""}
+        </div></div></div></div>`;
+    }).join("")}</div>`).join("");
+
+  const host = $("ruleGroups");
+  host.querySelectorAll("[data-toggle]").forEach(el => el.addEventListener("change", () => {
+    cfg.rules[el.dataset.toggle].enabled = el.checked;
+    el.closest(".rule").classList.toggle("on", el.checked);
+    const gt = el.closest(".group").previousElementSibling.lastElementChild;
+    gt.textContent = el.closest(".group").querySelectorAll(".rule.on").length + " on";
+    save();
+  }));
+  host.querySelectorAll(".seg[data-pri]").forEach(el => Seg(el, String(cfg.rules[el.dataset.pri].priority), v => { cfg.rules[el.dataset.pri].priority = +v; save(); }));
+  host.querySelectorAll("[data-all]").forEach(el => el.addEventListener("click", () => { cfg.rules[el.dataset.all].to = null; save(); rerenderRule(); }));
+  host.querySelectorAll("[data-to]").forEach(el => el.addEventListener("click", () => {
+    const s = cfg.rules[el.dataset.to];
+    let to = s.to ? [...s.to] : [];
+    to = to.includes(el.dataset.d) ? to.filter(x => x !== el.dataset.d) : [...to, el.dataset.d];
+    s.to = to.length ? to : null; save(); rerenderRule();
+  }));
+  host.querySelectorAll(".stepper button").forEach(b => b.addEventListener("click", () => setParam(b.dataset.r, b.dataset.k, +cfg.rules[b.dataset.r][b.dataset.k] + (+b.dataset.step) * (paramDef(b.dataset.r, b.dataset.k).step || 1))));
+  host.querySelectorAll(".stepper input").forEach(i => i.addEventListener("change", () => setParam(i.dataset.r, i.dataset.k, parseFloat(i.value))));
+  host.querySelectorAll("input.timein").forEach(i => i.addEventListener("change", () => { cfg.rules[i.dataset.r][i.dataset.k] = i.value; save(); }));
+}
+function rerenderRule() { const y = scrollY; renderRules(); scrollTo(0, y); }
+function paramDef(rid, k) { return RULES.find(r => r.id === rid).p.find(p => p.k === k); }
+function setParam(rid, k, v) {
+  const p = paramDef(rid, k), s = cfg.rules[rid];
+  if (!isFinite(v)) v = p.def;
+  v = Math.max(p.min, Math.min(p.max, Math.round(v / p.step) * p.step));
+  s[k] = v;
+  // keep warn below crit
+  if (k === "warn" && s.crit != null && v >= s.crit) s.crit = Math.min(paramDef(rid, "crit").max, v + 5);
+  if (k === "crit" && s.warn != null && v <= s.warn) s.warn = Math.max(paramDef(rid, "warn").min, v - 5);
+  const box = document.querySelector(`[data-rule="${rid}"]`);
+  box.querySelectorAll(".stepper input").forEach(i => i.value = s[i.dataset.k]);
+  save();
+}
+
+function renderDelivery() {
+  const d = cfg.delivery, q = d.quiet;
+  $("delivery").innerHTML = `
+    <div class="cell"><div class="txt"><b>Quiet hours</b><small>Hold Low and Normal alerts overnight, send them as one message after</small></div>
+      <label class="switch"><input type="checkbox" id="qOn" ${q.enabled ? "checked" : ""} aria-label="Quiet hours"><span></span></label></div>
+    <div class="rule ${q.enabled ? "on" : ""}" id="qBody"><div class="rule-body"><div><div class="rule-inner" style="padding-left:16px">
+      <div class="params"><label class="param">From <input type="time" class="timein" id="qFrom" value="${esc(q.from)}"></label><label class="param">until <input type="time" class="timein" id="qTo" value="${esc(q.to)}"></label></div>
+      <div class="cell" style="padding:0;min-height:0"><div class="txt"><b style="font-size:.88rem">Let High and Emergency through</b></div><label class="switch"><input type="checkbox" id="qHigh" ${q.allow_high ? "checked" : ""} aria-label="Let High and Emergency alerts through quiet hours"><span></span></label></div>
+    </div></div></div></div>
+    <div class="cell"><div class="txt"><b>Remind while still active</b><small>Re-send an alert that hasn't cleared</small></div>
+      <div class="seg sm" id="repSeg"><button data-v="0">Never</button><button data-v="60">1 h</button><button data-v="240">4 h</button><button data-v="720">12 h</button></div></div>
+    <div class="cell"><div class="txt"><b>"Resolved" messages</b><small>Send a follow-up when an alert clears</small></div>
+      <label class="switch"><input type="checkbox" id="resOn" ${d.resolved ? "checked" : ""} aria-label="Send resolved messages"><span></span></label></div>
+    <div class="cell tap" id="testAll" tabindex="0" role="button"><div class="txt"><b style="color:var(--accent)">Send a test to every destination</b></div></div>`;
+  $("qOn").addEventListener("change", e => { q.enabled = e.target.checked; $("qBody").classList.toggle("on", q.enabled); save(); });
+  $("qFrom").addEventListener("change", e => { q.from = e.target.value; save(); });
+  $("qTo").addEventListener("change", e => { q.to = e.target.value; save(); });
+  $("qHigh").addEventListener("change", e => { q.allow_high = e.target.checked; save(); });
+  $("resOn").addEventListener("change", e => { d.resolved = e.target.checked; save(); });
+  Seg($("repSeg"), String(d.repeat), v => { d.repeat = +v; save(); });
+  $("testAll").addEventListener("click", testAll);
+  $("testAll").addEventListener("keydown", e => { if (e.key === "Enter") testAll(); });
+  $("senderNote").textContent = cfg.sender
+    ? `Alerts are sent from ${cfg.sender}, the first node running the agent. If it goes down, the next one takes over. Settings are shared across the whole cluster.`
+    : "Alerts are sent from one node at a time, so you never get duplicates. Settings are shared across the whole cluster.";
+}
+async function testAll() {
+  const on = cfg.destinations.filter(d => d.enabled);
+  if (!on.length) return toast("No destinations are switched on.");
+  toast(`Sending to ${on.length} destination${on.length > 1 ? "s" : ""}…`);
+  const res = await Promise.all(on.map(d => sendTest({ id: d.id })));
+  const bad = res.filter(r => !r.ok);
+  toast(bad.length ? `${bad.length} failed: ${bad[0].error}` : `Sent to ${on.length} destination${on.length > 1 ? "s" : ""}. Check your phone.`);
+}
+async function sendTest(body) {
+  try {
+    const r = await afetch("api/settings/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return await r.json();
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+/* ---------- destination sheet ---------- */
+let editing = null, color = SWATCH[0], lastFocus = null;
+const KEY = /^[A-Za-z0-9]{30}$/;
+$("inSound").innerHTML = SOUNDS.map(s => `<option value="${s}">${s ? s[0].toUpperCase() + s.slice(1) : "Device default"}</option>`).join("");
+function paintSwatches() {
+  $("swatches").innerHTML = SWATCH.map(c => `<button class="pill sw" style="padding:0;width:26px;height:26px;background:${c};${c === color ? "box-shadow:0 0 0 2px var(--card),0 0 0 4px " + c : ""}" data-c="${c}" aria-label="Colour" aria-pressed="${c === color}"></button>`).join("");
+  $("swatches").querySelectorAll("button").forEach(b => b.addEventListener("click", () => { color = b.dataset.c; paintSwatches(); }));
+}
+function openSheet(id) {
+  editing = id ? cfg.destinations.find(d => d.id === id) : null;
+  lastFocus = document.activeElement;
+  $("sheetTitle").textContent = editing ? "Edit destination" : "New destination";
+  $("sheetSave").textContent = editing ? "Save" : "Add";
+  $("sheetDelete").hidden = !editing;
+  $("inLabel").value = editing ? editing.label : "";
+  $("inToken").value = ""; $("inUser").value = "";
+  $("inToken").placeholder = editing ? `${editing.token_hint} — leave blank to keep` : "30-character app token";
+  $("inUser").placeholder = editing ? `${editing.user_hint} — leave blank to keep` : "30-character user or group key";
+  $("inDevice").value = editing ? editing.device || "" : "";
+  $("inSound").value = editing ? editing.sound || "" : "";
+  color = editing ? editing.color || SWATCH[0] : SWATCH[cfg.destinations.length % SWATCH.length];
+  ["fLabel", "fToken", "fUser"].forEach(f => $(f).classList.remove("bad"));
+  paintSwatches();
+  const sh = $("sheet"), sc = $("scrim");
+  sh.hidden = false; sc.hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(() => { sh.classList.add("open"); sc.classList.add("open"); }));
+  setTimeout(() => $("inLabel").focus(), reduced ? 0 : 200);
+}
+function closeSheet() {
+  const sh = $("sheet"), sc = $("scrim");
+  sh.classList.remove("open"); sc.classList.remove("open");
+  setTimeout(() => { sh.hidden = true; sc.hidden = true; }, reduced ? 0 : 420);
+  if (lastFocus) lastFocus.focus();
+}
+function readForm(requireKeys) {
+  const label = $("inLabel").value.trim(), token = $("inToken").value.trim(), user = $("inUser").value.trim();
+  let ok = true;
+  const mark = (f, bad) => { $(f).classList.toggle("bad", bad); if (bad) ok = false; };
+  mark("fLabel", !label);
+  mark("fToken", (requireKeys || token) ? !KEY.test(token) : false);
+  mark("fUser", (requireKeys || user) ? !KEY.test(user) : false);
+  return ok ? { label, token, user, device: $("inDevice").value.trim(), sound: $("inSound").value, color } : null;
+}
+["inToken", "inUser"].forEach(id => $(id).addEventListener("input", e => { e.target.value = e.target.value.replace(/\s/g, ""); }));
+$("sheetCancel").addEventListener("click", closeSheet);
+$("scrim").addEventListener("click", closeSheet);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("sheet").hidden) closeSheet(); });
+$("sheetSave").addEventListener("click", () => {
+  const f = readForm(!editing); if (!f) return;
+  const hint = (k) => "•••" + k.slice(-4);
+  if (editing) {
+    Object.assign(editing, { label: f.label, device: f.device, sound: f.sound, color: f.color });
+    if (f.token) { editing.token = f.token; editing.token_hint = hint(f.token); }
+    if (f.user) { editing.user = f.user; editing.user_hint = hint(f.user); }
+  } else {
+    cfg.destinations.push({ id: "d" + Date.now().toString(36), enabled: true, ...f, token_hint: hint(f.token), user_hint: hint(f.user) });
+  }
+  save(true); renderDest(); renderRules(); closeSheet();
+  toast(editing ? "Destination updated" : `Added ${f.label}`);
+});
+$("sheetTest").addEventListener("click", async () => {
+  const f = readForm(!editing); if (!f) return;
+  const b = $("sheetTest"); b.disabled = true; b.textContent = "Sending…";
+  const r = await sendTest(editing && !f.token && !f.user ? { id: editing.id } : { id: editing && editing.id, token: f.token || undefined, user: f.user || undefined, device: f.device, sound: f.sound, label: f.label });
+  b.disabled = false; b.textContent = "Send test notification";
+  toast(r.ok ? "Test sent. Check your phone." : "Pushover said: " + (r.error || "failed"));
+});
+$("sheetDelete").addEventListener("click", () => {
+  if (!editing) return;
+  if (!confirm(`Delete "${editing.label}"? Alerts will stop going to it.`)) return;
+  const id = editing.id;
+  cfg.destinations = cfg.destinations.filter(d => d.id !== id);
+  for (const k in cfg.rules) if (cfg.rules[k].to) { cfg.rules[k].to = cfg.rules[k].to.filter(x => x !== id); if (!cfg.rules[k].to.length) cfg.rules[k].to = null; }
+  save(true); renderDest(); renderRules(); closeSheet(); toast("Destination deleted");
+});
+
+/* ---------- routing ---------- */
+function route() {
+  const s = location.hash === "#settings";
+  $("dashView").hidden = s; $("foot").hidden = s;
+  $("settingsView").hidden = !s;
+  $("openSettings").hidden = s; $("closeSettings").hidden = !s;
+  if (s && !cfg) load();
+  scrollTo(0, 0);
+}
+$("openSettings").addEventListener("click", () => { location.hash = "settings"; });
+$("closeSettings").addEventListener("click", () => { location.hash = ""; });
+addEventListener("hashchange", route);
+route();
+})();
+</script>
+</body>
+</html>
