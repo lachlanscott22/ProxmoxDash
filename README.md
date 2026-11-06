@@ -1,3 +1,5 @@
+> Yes, this is AI-made. I needed a dashboard and I don't care. Use it or don't. 🙂
+
 # Proxmox Dashboard (`pve-dash`)
 
 A live dashboard for Proxmox VE that runs on the Proxmox host itself. One Python 3 file (standard library only) plus `index.html`. It reads CPU, memory, NICs, disks, temperatures and fans straight from the kernel, reads guests and storage from `pvesh`, and can send alerts through Pushover.
@@ -30,7 +32,8 @@ Point it at your repository with `PVE_DASH_REPO=owner/name` (set in `/etc/defaul
 
 ## Publishing a new version
 
-**Windows:** run `release.bat` (or `.elease.ps1`) from this folder. The first run asks for your GitHub username (commits use `<username>@users.noreply.github.com`, so your real email stays private) and the repository URL, then it tests, commits, tags and pushes. Later runs: `release.bat minor "What changed"`. Put regexes (your name, email) in `.pushguard.local`, which is never committed, and it will refuse to push if any match.
+**Windows:** run `release.bat` (or `.
+elease.ps1`) from this folder. The first run asks for your GitHub username (commits use `<username>@users.noreply.github.com`, so your real email stays private) and the repository URL, then it tests, commits, tags and pushes. Later runs: `release.bat minor "What changed"`. Put regexes (your name, email) in `.pushguard.local`, which is never committed, and it will refuse to push if any match.
 
 **Linux/macOS/Git Bash:**
 
