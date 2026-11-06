@@ -22,6 +22,23 @@ Run `install.sh` on **every** node. There is nothing to configure. Each agent se
 
 Settings (`/etc/pve/priv/pve-dash.json`) and alert state (`/etc/pve/priv/pve-dash-state.json`) live on pmxcfs, so they replicate to every node. Only one node sends alerts: the online node with the lowest name that is running the agent. If it goes down, the next one takes over without re-sending what is already active.
 
+## Updates
+
+Settings has a **Software** section. When a newer version is on GitHub, a dot appears on the gear icon and the section shows **Update** (this node) and **Update all nodes**. Updating downloads the tagged release, checks it compiles and matches the version, keeps the old files as `*.bak`, and restarts the service. Settings are untouched.
+
+Point it at your repository with `PVE_DASH_REPO=owner/name` (set in `/etc/default/pve-dash`). `release.sh` fills the default in from your git remote the first time you publish, so you normally don't need to. The check runs every 6 hours, or press **Check now**.
+
+## Publishing a new version
+
+```sh
+git remote add origin https://github.com/<owner>/<repo>.git   # once
+./release.sh                       # patch bump: runs tests, commits, tags vX.Y.Z, pushes
+./release.sh minor "What changed"  # or: major, or an exact version like 2.3.0
+./release.sh --no-bump "Docs"      # push without offering an update to nodes
+```
+
+It refuses to run off `main`, with failing tests, or if `origin/main` has commits you don't have. Nodes find new versions through the `VERSION` file on `main` and download the matching `vX.Y.Z` tag.
+
 ## Firewall
 
 If the Proxmox firewall is enabled, allow TCP 8765 from your LAN, and **between the nodes** (the agents call each other). In the web UI: Datacenter → Firewall → Add (Direction `in`, Action `ACCEPT`, Protocol `tcp`, Dest. port `8765`), or in `/etc/pve/firewall/cluster.fw`:

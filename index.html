@@ -522,6 +522,10 @@ footer { max-width: 1320px; margin: 0 auto; padding: 0 24px 32px; color: var(--t
   <div class="group" id="brandGroup"></div>
   <p class="g-foot">PNG, SVG, WebP or JPEG up to 1 MB. Shown 34px tall in the header (wide logos are fine) and used as the browser tab icon. A transparent background looks best in both light and dark mode.</p>
 
+  <div class="g-title"><span>Software</span></div>
+  <div class="group" id="updGroup"></div>
+  <p class="g-foot" id="updFoot"></p>
+
   <h2 class="page" style="font-size:1.4rem;margin-top:40px">Notifications</h2>
   <p class="lede">Alerts are sent through Pushover. Add a destination for each app or group that should hear about it, then choose which alerts go where.</p>
 
@@ -1250,6 +1254,62 @@ function applyBrand(b) {
 }
 fetch("api/branding", { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(b => b && applyBrand(b)).catch(() => {});
 
+
+/* ---------- software updates (GitHub) ---------- */
+let upd = null;
+const vcmp = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); } return 0; };
+async function loadUpdate(refresh) {
+  try { const r = await fetch("api/update" + (refresh ? "?refresh=1" : ""), { cache: "no-store" }); if (r.ok) upd = await r.json(); } catch (e) {}
+  paintUpdateDot();
+  if (cfg && !$("settingsView").hidden) renderUpdate();
+}
+function paintUpdateDot() {
+  const b = $("openSettings"); let d = b.querySelector(".upd-dot"); const on = upd && upd.available;
+  if (on && !d) {
+    d = document.createElement("i"); d.className = "upd-dot"; d.setAttribute("aria-hidden", "true");
+    d.style.cssText = "position:absolute;top:4px;right:4px;width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--card)";
+    b.style.position = "relative"; b.appendChild(d); b.title = "Update available";
+  } else if (!on && d) { d.remove(); b.removeAttribute("title"); }
+}
+function renderUpdate() {
+  const u = upd, g = $("updGroup");
+  if (!u) { g.innerHTML = ""; $("updFoot").textContent = ""; return; }
+  const agents = (u.nodes || []).filter(n => n.agent);
+  const stale = agents.filter(n => u.latest && n.version && vcmp(n.version, u.latest) < 0 && !n.local);
+  let sub;
+  if (!u.configured) sub = "Update checking isn't set up. Set PVE_DASH_REPO to your GitHub repository (owner/name).";
+  else if (u.error && !u.latest) sub = u.error;
+  else if (u.available) sub = `Version ${esc(u.latest)} is available`;
+  else sub = "Up to date" + (u.checked ? " · checked " + new Date(u.checked * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "");
+  g.innerHTML = `<div class="cell"><div class="txt"><b>Version ${esc(u.current)}</b><small>${sub}</small></div>
+    ${u.available && agents.length > 1 ? `<button class="mini-btn" id="updAll">Update all nodes</button>` : ""}
+    ${u.available ? `<button class="mini-btn" id="updGo" style="color:var(--accent)">Update</button>` : u.configured ? `<button class="mini-btn" id="updCheck">Check now</button>` : ""}</div>`;
+  $("updFoot").textContent = u.available
+    ? "Downloads the new version from GitHub and restarts the dashboard on that node (a few seconds). Your settings are kept."
+    : stale.length ? `${stale.map(n => n.name + " is on " + n.version).join(", ")}. Update those nodes from their own dashboard, or use Update all nodes when a new version is out.` : "";
+  if ($("updGo")) $("updGo").addEventListener("click", () => doUpdate(false));
+  if ($("updAll")) $("updAll").addEventListener("click", () => doUpdate(true));
+  if ($("updCheck")) $("updCheck").addEventListener("click", async () => { $("updCheck").textContent = "Checking…"; upd.checked = 0; await loadUpdate(true); toast(upd.available ? "Version " + upd.latest + " is available" : upd.error || "You're up to date"); });
+}
+async function doUpdate(all) {
+  document.querySelectorAll("#updGroup .mini-btn").forEach(b => { b.disabled = true; });
+  toast("Updating…");
+  try {
+    const r = await afetch("api/settings/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ all }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || "HTTP " + r.status);
+    const bad = Object.entries(j.nodes || {}).filter(([, v]) => v !== true).map(([k, v]) => k + ": " + v);
+    toast("Updated to " + j.version + ". Restarting…" + (bad.length ? " (" + bad.join("; ") + ")" : ""));
+    const t0 = Date.now();
+    const wait = async () => {
+      try { const d = await (await fetch("api/state", { cache: "no-store" })).json(); if (d.version === j.version) return location.reload(); } catch (e) {}
+      if (Date.now() - t0 < 60000) setTimeout(wait, 1500); else toast("Still restarting. Reload in a moment.");
+    };
+    setTimeout(wait, 2500);
+  } catch (e) { toast("Update failed: " + e.message); renderUpdate(); }
+}
+
+loadUpdate(false);
 const LOGO_TYPES = ["image/png", "image/svg+xml", "image/webp", "image/jpeg"];
 function renderBrand() {
   const b = cfg.branding;
@@ -1299,7 +1359,7 @@ async function removeLogo() {
   } catch (e) { toast("Couldn't remove logo: " + e.message); }
 }
 /* ---------- render ---------- */
-function render() { renderBrand(); renderDest(); renderRules(); renderDelivery(); }
+function render() { renderBrand(); renderUpdate(); renderDest(); renderRules(); renderDelivery(); }
 
 function renderDest() {
   const list = cfg.destinations;
@@ -1514,6 +1574,7 @@ function route() {
   $("settingsView").hidden = !s;
   $("openSettings").hidden = s; $("closeSettings").hidden = !s;
   if (s && !cfg) load();
+  if (s) loadUpdate(true);
   scrollTo(0, 0);
 }
 $("openSettings").addEventListener("click", () => { location.hash = "settings"; });

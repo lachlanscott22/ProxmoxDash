@@ -1748,10 +1748,121 @@ class EngineRunner:
                 log.exception("engine tick failed")
 
 
+# ---------------------------------------------------------------------- updates
+REPO = os.environ.get("PVE_DASH_REPO") or "OWNER/pve-dash"  # release.sh fills this in from your git remote
+UPDATE_BASE = os.environ.get("PVE_DASH_UPDATE_BASE") or "https://raw.githubusercontent.com"
+UPDATE_BRANCH = os.environ.get("PVE_DASH_UPDATE_BRANCH") or "main"
+UPDATE_FILES = ("index.html", "pve-dash.py")  # the script goes last so a failure never leaves a half-update
+VER_RE = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def parse_ver(s):
+    return tuple(int(x) for x in s.split("."))
+
+
+def http_get(url, timeout=15, limit=3 * 1024 * 1024):
+    req = urlreq.Request(url, headers={"User-Agent": "pve-dash-updater"})
+    with urlreq.urlopen(req, timeout=timeout) as r:
+        data = r.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("download too large")
+    return data
+
+
+class Updater:
+    """Checks GitHub for a newer version and (on request) swaps the files in place."""
+
+    def __init__(self, fetch=http_get, install_dir=HERE, repo=None, base=None, current=VERSION, clock=time.time):
+        self.fetch, self.dir, self.current, self.clock = fetch, install_dir, current, clock
+        self.repo = REPO if repo is None else repo
+        self.base = (UPDATE_BASE if base is None else base).rstrip("/")
+        self.latest = None
+        self.checked = 0
+        self.error = None
+        self.lock = threading.Lock()
+
+    def configured(self):
+        return bool(re.match(r"^[\w.-]+/[\w.-]+$", self.repo or "")) and not self.repo.startswith("OWNER/")
+
+    def check(self):
+        if not self.configured():
+            return
+        try:
+            v = self.fetch("%s/%s/%s/VERSION" % (self.base, self.repo, UPDATE_BRANCH)).decode().strip()
+            if not VER_RE.match(v):
+                raise ValueError("unexpected VERSION file")
+            self.latest, self.error = v, None
+        except Exception as e:
+            self.error = "Couldn't reach GitHub (%s)" % type(e).__name__
+        self.checked = self.clock()
+
+    def status(self, refresh=False):
+        if refresh and self.configured() and self.clock() - self.checked > 60:
+            self.check()
+        avail = bool(self.latest and parse_ver(self.latest) > parse_ver(self.current))
+        return {"configured": self.configured(), "repo": self.repo if self.configured() else None, "current": self.current,
+                "latest": self.latest, "available": avail, "checked": self.checked or None, "error": self.error}
+
+    def apply(self):
+        """Download, validate, then replace the files. Returns the new version. The caller restarts the service."""
+        with self.lock:
+            self.check()
+            st = self.status()
+            if not st["available"]:
+                raise ValueError(st["error"] or "Already up to date")
+            ver = st["latest"]
+            blobs = {fn: self.fetch("%s/%s/v%s/%s" % (self.base, self.repo, ver, fn)) for fn in UPDATE_FILES}
+            src = blobs["pve-dash.py"].decode()
+            compile(src, "pve-dash.py", "exec")
+            if not re.search(r'^VERSION = "%s"$' % re.escape(ver), src, re.M):
+                raise ValueError("Downloaded script doesn't match version %s" % ver)
+            if b"<html" not in blobs["index.html"][:2048].lower():
+                raise ValueError("Downloaded index.html looks wrong")
+            for fn in UPDATE_FILES:
+                path = os.path.join(self.dir, fn)
+                if os.path.exists(path):
+                    try:
+                        with open(path, "rb") as f, open(path + ".bak", "wb") as b:
+                            b.write(f.read())
+                    except OSError:
+                        pass
+                atomic_write(path, blobs[fn], 0o755 if fn.endswith(".py") else 0o644)
+            return ver
+
+
+def update_loop(updater):
+    time.sleep(30)
+    while True:
+        updater.check()
+        time.sleep(6 * 3600)
+
+
+def restart_soon(delay=1.5):
+    """Exit so systemd (Restart=always) starts the new version."""
+    threading.Timer(delay, lambda: os._exit(0)).start()
+
+
+def forward_update(ip, cookie):
+    """Ask another node to update itself. The signed session cookie is valid on every node (shared secret)."""
+    try:
+        req = urlreq.Request("http://%s:%d/api/settings/update" % (ip, PORT), data=b"{}", method="POST",
+                             headers={"Content-Type": "application/json", "Cookie": cookie})
+        with urlreq.urlopen(req, timeout=30) as r:
+            return True if json.loads(r.read()).get("ok") else "failed"
+    except urlerr.HTTPError as e:
+        try:
+            return json.loads(e.read()).get("error", "failed")
+        except Exception:
+            return "HTTP %d" % e.code
+    except Exception as e:
+        return type(e).__name__
+
+
 # ------------------------------------------------------------------------ http
 class App:
-    def __init__(self, collector, settings, auth, logos, transport, demo):
+    def __init__(self, collector, settings, auth, logos, transport, demo, updater=None):
         self.collector, self.settings, self.auth, self.logos, self.transport, self.demo = collector, settings, auth, logos, transport, demo
+        self.updater = updater or Updater()
 
     def branding(self, cfg=None):
         b = (cfg or self.settings.get())["branding"]
@@ -1876,6 +1987,12 @@ def make_handler(app):
                     if f[1] == "image/svg+xml":
                         h["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'"
                     return self.reply(200, data, f[1], h)
+                if path == "/api/update":
+                    st = app.updater.status(refresh="refresh=1" in (urlparse.urlparse(self.path).query or ""))
+                    nodes = (app.collector.state or {}).get("nodes") or []
+                    st["nodes"] = [{"name": n["name"], "version": n.get("agent_version"), "agent": n.get("agent"), "local": n.get("local")}
+                                   for n in nodes if n.get("online")]
+                    return self.reply(200, st)
                 if path == "/api/auth":
                     ok = app.auth.configured() and any(
                         k == Auth.COOKIE and app.auth.valid(v) for k, _, v in (p.strip().partition("=") for p in (self.headers.get("Cookie") or "").split(";")))
@@ -1955,6 +2072,24 @@ def make_handler(app):
                         time.sleep(1)
                         return self.reply(401, {"error": "Wrong password"})
                     return self.reply(200, {"ok": True}, headers={"Set-Cookie": app.auth.cookie(app.auth.issue())})
+                if path == "/api/settings/update":
+                    if not self.authed():
+                        return
+                    body = self.json_body()
+                    if body is None:
+                        return
+                    results = {}
+                    if body.get("all"):
+                        for n in (app.collector.state or {}).get("nodes") or []:
+                            if n.get("online") and n.get("agent") and not n.get("local") and n.get("ip"):
+                                results[n["name"]] = forward_update(n["ip"], self.headers.get("Cookie") or "")
+                    try:
+                        ver = app.updater.apply()
+                    except Exception as e:
+                        return self.reply(400, {"ok": False, "error": str(e)[:200], "nodes": results})
+                    self.reply(200, {"ok": True, "version": ver, "nodes": results})
+                    restart_soon()
+                    return
                 if path == "/api/auth/logout":
                     return self.reply(200, {"ok": True}, headers={"Set-Cookie": app.auth.clear_cookie()})
                 self.reply(404, {"error": "Not found"})
@@ -1998,7 +2133,9 @@ def build_app():
         st["sender"] = pick_sender(st)
         runner.submit(st)
     collector.on_state = on_state
-    return App(collector, settings, auth, logos, transport, DEMO), collector
+    app = App(collector, settings, auth, logos, transport, DEMO)
+    threading.Thread(target=update_loop, args=(app.updater,), daemon=True, name="update-check").start()
+    return app, collector
 
 
 def main():
